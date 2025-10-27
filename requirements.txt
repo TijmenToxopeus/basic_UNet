@@ -1,0 +1,22 @@
+# ============================================================
+# 🧠 basic_UNet — Python Dependencies
+# ============================================================
+
+# --- Core ML libraries ---
+torch>=2.0
+torchvision>=0.15
+
+# --- Data handling ---
+numpy>=1.24
+pandas>=2.0
+pyyaml>=6.0
+
+# --- Visualization & progress ---
+matplotlib>=3.7
+tqdm>=4.65
+
+# --- Optional: For image loading / augmentations (if used) ---
+Pillow>=10.0
+
+# --- (Optional) Jupyter / notebook environment ---
+jupyter

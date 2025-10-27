@@ -1,0 +1,52 @@
+# ============================================================
+# 🧠 basic_UNet Project — .gitignore
+# ============================================================
+
+# --- Python cache and temporary files ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+*.tmp
+
+# --- Jupyter notebooks checkpoints ---
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+venv/
+.env/
+.venv/
+env/
+*.egg-info/
+
+# --- Results, models, and checkpoints ---
+results/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# --- Data and intermediate files ---
+datasets/
+data/
+*.npz
+*.npy
+*.csv
+*.h5
+*.pkl
+
+# --- Config and experiment outputs ---
+*.yaml~
+*.json~
+*.bak
+
+# --- IDE / editor specific ---
+.vscode/
+.idea/
+*.code-workspace
+
+# --- OS-specific ---
+.DS_Store
+Thumbs.db

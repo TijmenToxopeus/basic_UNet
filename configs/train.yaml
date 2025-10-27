@@ -1,0 +1,38 @@
+# configs/train.yaml
+experiment:
+  model_name: "PrunedUNet"
+  run_name: "finetune_pruned_38pct"            # optional label (e.g. "finetune_30pct")
+  save_root: "results"            # base results folder
+
+data:
+  train_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
+  label_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
+  image_size: [256, 256]
+  num_workers: 4
+
+model:
+  in_ch: 1
+  out_ch: 4
+  # features: [32, 64, 128, 256]
+  features: [29, 52, 90, 154]
+
+training:
+  # epochs: 50
+  epochs: 20
+  batch_size: 8
+  # lr: 1e-3
+  lr: 1e-4
+  optimizer: "adam"
+  loss_fn: "ce_dice"             # choose between "ce", "dice", "ce_dice"
+  # resume_checkpoint: null         # path to pruned checkpoint if fine-tuning
+  resume_checkpoint: "/media/ttoxopeus/basic_UNet/results/pruned_models/2025-10-24_16-17-04_structured_prune/model_pruned_structured.pth"
+  device: "cuda"
+
+logging:
+  save_interval: 5                # save every N epochs
+  print_every: 10                 # print every N batches
+
+
+# for baseline use as: python -m src/training/train.py --config configs/train.yaml
+# for fine-tuning first change resume_checkpoint to the pruned model path (i.e. "results/BasicUNet/pruned/prune_30pct/model.pth"), update features and training params,
+# then run: python -m src/training/train.py --config configs/train.yaml
