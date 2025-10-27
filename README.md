@@ -1,0 +1,75 @@
+# 🧩 basic_UNet
+
+This project implements a lightweight **U-Net** architecture for 2D medical image segmentation (tested on the ACDC dataset).  
+It includes training, evaluation, and structured pruning tools, along with model inspection utilities.
+
+---
+
+## 🚀 Features
+- Modular **U-Net** implementation (easy to extend)
+- **Training & validation** pipeline with Dice/IoU metrics
+- **Model inspection** for layer shapes and L1-norm statistics
+- **Structured pruning** (L1-based) for model compression
+- Automatic logging of metrics and checkpoints
+
+---
+
+## 🧱 Project Structure
+```
+basic_UNet/
+│
+├── src/
+│   ├── models/          # UNet definition
+│   ├── training/        # train, evaluate, metrics, loss
+│   ├── pruning/         # pruning + model inspection
+│   └── utils/           # helper functions (optional)
+│
+├── configs/             # optional config files (YAML)
+├── results/             # experiment outputs (ignored by git)
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## ⚙️ Usage
+
+### 🧠 Train a baseline model
+```bash
+python -m src.training.train
+```
+
+### 🔍 Evaluate a trained model
+```bash
+python -m src.training.evaluate
+```
+
+### ✂️ Inspect or prune a model
+```bash
+python -m src.pruning.model_inspect
+```
+
+---
+
+## 📦 Installation
+```bash
+git clone https://github.com/TijmenToxopeus/basic_UNet.git
+cd basic_UNet
+pip install -r requirements.txt
+```
+
+---
+
+## 📊 Outputs
+- Checkpoints and logs are saved under:
+  ```
+  results/UNet_ACDC/<date>/baseline/training/
+  ```
+- Metrics are stored in `metrics.json` and visualized as `training_curves.png`.
+
+---
+
+## 🧠 Author
+**Tijmen Toxopeus**  
+Master’s student in Applied Physics (TU Delft)  
+Focus: model compression & efficient medical image segmentation
