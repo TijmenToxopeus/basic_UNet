@@ -1,39 +1,7 @@
 import torch
 import torch.nn as nn
-import pandas as pd 
-
-def print_model_summary(model: nn.Module, show_weights: bool = True, indent: int = 2):
-    """
-    Prints a clean hierarchical summary of the model architecture with parameter shapes.
-    
-    Args:
-        model (nn.Module): The model (e.g. UNet instance)
-        show_weights (bool): Whether to show the tensor shapes for each Conv/Linear layer
-        indent (int): Indentation spaces per nested module
-    """
-    print("🧠 Model structure overview:")
-    print("───────────────────────────────")
-
-    def recurse(module, prefix=""):
-        for name, layer in module.named_children():
-            layer_name = f"{prefix}{name}"
-            layer_type = layer.__class__.__name__
-            if show_weights and hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
-                shape = tuple(layer.weight.shape)
-                print(f"{layer_name:<40} ({layer_type:<15}) → {shape}")
-            else:
-                print(f"{layer_name:<40} ({layer_type:<15})")
-            recurse(layer, prefix + " " * indent)
-
-    recurse(model)
-
-    # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print("───────────────────────────────")
-    print(f"Total parameters: {total_params:,} ({total_params/1e6:.2f}M)")
-    print(f"Trainable: {trainable_params:,}")
-    print("───────────────────────────────")
+import pandas as pd
+import numpy as np 
 
 
 def model_to_dataframe(model: nn.Module):
@@ -89,19 +57,27 @@ def model_to_dataframe(model: nn.Module):
     return df
 
 
-def model_to_dataframe_with_l1(model: nn.Module, remove_nan_layers: bool = True):
+def model_to_dataframe_with_l1(
+    model: nn.Module,
+    remove_nan_layers: bool = True,
+    block_ratios: dict = None,
+    post_prune_ratios: dict = None
+):
     """
     Build a DataFrame summarizing all convolutional layers in a UNet-like model,
-    including L1 statistics and parameter counts.
+    including L1 statistics, parameter counts, and optionally pruning ratios.
 
     Args:
         model (nn.Module): Model to inspect.
         remove_nan_layers (bool): If True, drops layers without L1 stats (e.g. container modules).
+        block_ratios (dict, optional): Mapping {block_name: prune_ratio} to include in table.
+        post_prune_ratios (dict, optional): Mapping {layer_name: actual_prune_ratio} after pruning.
 
     Returns:
         pd.DataFrame: Layer summary with columns:
         ['Layer', 'Type', 'Shape', 'In Ch', 'Out Ch',
-         'Num Params', 'Mean L1', 'Min L1', 'Max L1', 'L1 Std']
+         'Num Params', 'Mean L1', 'Min L1', 'Max L1', 'L1 Std',
+         'Block Ratio', 'Post-Prune Ratio']
     """
     layers = []
 
@@ -110,7 +86,7 @@ def model_to_dataframe_with_l1(model: nn.Module, remove_nan_layers: bool = True)
             layer_name = f"{prefix}{name}"
             layer_type = layer.__class__.__name__
 
-            # Recurse into container layers (Sequential, ModuleList, etc.)
+            # Recurse into container layers
             if isinstance(layer, (nn.Sequential, nn.ModuleList, nn.ModuleDict)):
                 recurse(layer, prefix + name + ".")
                 continue
@@ -142,7 +118,7 @@ def model_to_dataframe_with_l1(model: nn.Module, remove_nan_layers: bool = True)
                 "Mean L1": mean_l1,
                 "Min L1": min_l1,
                 "Max L1": max_l1,
-                "L1 Std": std_l1
+                "L1 Std": std_l1,
             })
 
             recurse(layer, prefix + name + ".")
@@ -150,6 +126,7 @@ def model_to_dataframe_with_l1(model: nn.Module, remove_nan_layers: bool = True)
     recurse(model)
     df = pd.DataFrame(layers)
 
+    # Sort UNet layers (encoders → bottleneck → decoders)
     enc = df[df["Layer"].str.startswith("encoders")].copy()
     bott = df[df["Layer"].str.startswith("bottleneck")].copy()
     dec = df[df["Layer"].str.startswith("decoders") | df["Layer"].str.startswith("final_conv")].copy()
@@ -158,8 +135,78 @@ def model_to_dataframe_with_l1(model: nn.Module, remove_nan_layers: bool = True)
     if remove_nan_layers:
         df_sorted = df_sorted.dropna(subset=["Mean L1"]).reset_index(drop=True)
 
+    # --- Add optional ratio columns ---
+    df_sorted["Block Ratio"] = None
+    df_sorted["Post-Prune Ratio"] = None
+
+    if block_ratios:
+        for block_name, ratio in block_ratios.items():
+            mask = df_sorted["Layer"].str.startswith(block_name)
+            df_sorted.loc[mask, "Block Ratio"] = ratio
+
+    if post_prune_ratios:
+        for layer_name, ratio in post_prune_ratios.items():
+            df_sorted.loc[df_sorted["Layer"] == layer_name, "Post-Prune Ratio"] = ratio
+
     return df_sorted
 
+
+def get_pruning_masks_blockwise(df, block_ratios=None, default_ratio=0.3):
+    """
+    Generate structured pruning masks for Conv2d layers, grouped by UNet blocks.
+
+    Args:
+        df (pd.DataFrame): model summary with L1 stats.
+        block_ratios (dict): optional {block_name: prune_ratio} mapping.
+                             e.g. {"encoders.0": 0.2, "encoders.1": 0.3, "bottleneck": 0.4}
+        default_ratio (float): used for blocks not in block_ratios.
+
+    Returns:
+        dict: {layer_name: torch.BoolTensor mask}
+    """
+    masks = {}
+    
+    # Keep only Conv2d layers
+    conv_df = df[df["Type"].str.contains("Conv2d")].dropna(subset=["Mean L1"])
+
+    for _, row in conv_df.iterrows():
+        name = row["Layer"]
+        num_out = int(row["Out Ch"])
+
+        # Identify block name — everything up to ".net"
+        block = ".".join(name.split(".")[:2])
+        ratio = block_ratios.get(block, default_ratio) if block_ratios else default_ratio
+
+        # reconstruct approximate per-filter L1 values
+        l1_vals = np.linspace(row["Min L1"], row["Max L1"], num_out)
+
+        # Compute local threshold for this block
+        local_thresh = np.percentile(l1_vals, ratio * 100)
+        mask = torch.tensor(l1_vals > local_thresh)
+
+        masks[name] = mask
+        print(f"Block {block} | Layer {name} | ratio={ratio:.2f} | threshold={local_thresh:.4f}")
+
+    print(f"\n✅ Generated pruning masks for {len(masks)} layers across blocks.")
+    return masks
+
+def compute_actual_prune_ratios(original_model, pruned_model):
+    """
+    Compare two models (same architecture) and compute actual pruning ratios
+    for Conv2d layers (based on output channels).
+
+    Returns:
+        dict: {layer_name: prune_ratio}
+    """
+    ratios = {}
+    for (name_orig, layer_orig), (name_pruned, layer_pruned) in zip(
+        original_model.named_modules(), pruned_model.named_modules()
+    ):
+        if isinstance(layer_orig, nn.Conv2d) and isinstance(layer_pruned, nn.Conv2d):
+            if layer_orig.out_channels > 0:
+                ratio = 1 - (layer_pruned.out_channels / layer_orig.out_channels)
+                ratios[name_orig] = round(float(ratio), 4)
+    return ratios
 
 
 def compare_models(model_before, model_after):

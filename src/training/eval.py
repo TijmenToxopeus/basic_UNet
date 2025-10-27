@@ -45,11 +45,11 @@ def evaluate():
     # ============================================================
 
     # --- Paths ---
-    model_checkpoint = "results/UNet_ACDC/exp1/baseline/training/final_model.pth"
+    model_checkpoint = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/pruned_model.pth"
     save_root = "results"
     model_name = "UNet_ACDC"
     run_name = "exp1"  # match your training folder timestamp
-    subfolder = "baseline"
+    subfolder = "pruned"
     phase = "evaluation"
 
     # --- Dataset ---
