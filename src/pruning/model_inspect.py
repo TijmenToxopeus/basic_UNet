@@ -167,7 +167,14 @@ def get_pruning_masks_blockwise(df, block_ratios=None, default_ratio=0.3):
     masks = {}
     
     # Keep only Conv2d layers
-    conv_df = df[df["Type"].str.contains("Conv2d")].dropna(subset=["Mean L1"])
+    #conv_df = df[df["Type"].str.contains("Conv2d")].dropna(subset=["Mean L1"])
+
+    conv_df = (
+        df[
+            (df["Type"].str.contains("Conv2d")) &
+            (~df["Layer"].str.contains("final_conv"))
+        ].dropna(subset=["Mean L1"])
+    )
 
     for _, row in conv_df.iterrows():
         name = row["Layer"]

@@ -28,6 +28,8 @@ def rebuild_pruned_unet(model, masks, save_path=None):
             out_ch = model.encoders[i].net[3].out_channels
         enc_features.append(int(out_ch))
 
+    # dec_features = [358, 204, 114, 57]  # hardcoded for pruned model
+
     # --- Bottleneck output channels ---
     bottleneck_layer = "bottleneck.net.3"
     if bottleneck_layer in masks:
@@ -44,6 +46,14 @@ def rebuild_pruned_unet(model, masks, save_path=None):
         out_ch=model.final_conv.out_channels,
         features=enc_features
     ).to(device)
+
+    # pruned_model = UNet(
+    #     in_ch=model.encoders[0].net[0].in_channels,
+    #     out_ch=model.final_conv.out_channels,
+    #     encoder_features=enc_features,
+    #     decoder_features=dec_features,
+    #     bottleneck_features=bottleneck_out
+    # ).to(device)
 
     # --- Copy and prune weights for each Conv2d layer ---
     for name, module in model.named_modules():

@@ -61,7 +61,11 @@ def evaluate():
     # --- Model configuration ---
     in_ch = 1
     out_ch = 4
-    features = [64, 128, 256, 512]
+    # enc_features = [57, 102, 179, 307]
+    # dec_features = [358, 204, 114, 57]
+    # bottleneck_features = 768
+    #features = [64, 128, 256, 512]
+    features = [48, 96, 192, 384]
 
     # --- Evaluation options ---
     num_visuals = 3  # number of random prediction examples to save
@@ -91,6 +95,13 @@ def evaluate():
 
     # --- Model ---
     model = UNet(in_ch=in_ch, out_ch=out_ch, features=features).to(device)
+    # model = UNet(
+    #     in_ch=in_ch,
+    #     out_ch=out_ch,
+    #     encoder_features=enc_features,
+    #     decoder_features=dec_features,
+    #     bottleneck_features=bottleneck_features
+    # ).to(device)
     state = torch.load(model_checkpoint, map_location=device)
     model.load_state_dict(state)
     model.eval()
