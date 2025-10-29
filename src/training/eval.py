@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from src.models.unet import UNet
 from src.training.data_loader import SegmentationDataset
 from src.training.metrics import dice_score, iou_score
-from src.pruning.rebuild import build_pruned_unet
+from src.pruning.rebuild import build_pruned_unet, plot_unet_schematic
 
 
 # ------------------------------------------------------------
@@ -56,11 +56,21 @@ def evaluate(debug=True):
     num_slices_per_volume = 30
     batch_size = 1
 
+
+    if subfolder == "pruned":
+        meta_path = model_checkpoint.replace(".pth", "_meta.json")
+        with open(meta_path, "r") as f:
+            meta = json.load(f)
+        enc_features = meta["enc_features"]
+        dec_features = meta["dec_features"]
+        bottleneck_out = meta["bottleneck_out"]
+    else:
+        enc_features = [51, 96, 192, 384]
+        dec_features = [384, 192, 96, 51]
+        bottleneck_out = 768
+
     in_ch = 1
     out_ch = 4
-    enc_features = [51, 96, 192, 384]
-    dec_features = [384, 192, 96, 51]
-    bottleneck_out = 768
 
     num_visuals = 3
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -88,6 +98,8 @@ def evaluate(debug=True):
     model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
     if subfolder == "pruned":
         model = build_pruned_unet(model, enc_features, dec_features, bottleneck_out).to(device)
+    else:
+        model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
 
     state = torch.load(model_checkpoint, map_location=device)
     model.load_state_dict(state)

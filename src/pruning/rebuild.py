@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import os
+import json
 from src.models.unet import UNet
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -149,10 +150,10 @@ def copy_pruned_weights(original, pruned, masks, verbose=True):
         actual_shape = tuple(w_new.shape)
 
         if expected_shape != actual_shape:
-            print(f"❌ Shape mismatch in layer '{name}':")
-            print(f"   Expected: {expected_shape}, Got: {actual_shape}")
-            print(f"   (Hint: mismatch likely from previous layer pruning or wrong feature propagation)")
-            # Optional: skip assignment to avoid crash
+            # print(f"❌ Shape mismatch in layer '{name}':")
+            # print(f"   Expected: {expected_shape}, Got: {actual_shape}")
+            # print(f"   (Hint: mismatch likely from previous layer pruning or wrong feature propagation)")
+            # # Optional: skip assignment to avoid crash
             continue
 
         # --- Assign weights if shapes match ---
@@ -166,7 +167,7 @@ def copy_pruned_weights(original, pruned, masks, verbose=True):
         if verbose:
             print(f"✅ Copied weights for {name} | shape: {w_new.shape}")
 
-    print("🔧 Weight copying completed.")
+    # print("🔧 Weight copying completed.")
     return pruned
 
 
@@ -228,7 +229,7 @@ def plot_unet_schematic(enc_features, dec_features, bottleneck_out,
         # text with channels
         # in_ch_str = bottleneck_out if i == 0 else dec_features[i - 1]
         in_ch_str = dec_features[i]
-        ax.text(x_dec - 1.75, y + 0.3, f"{in_ch_str}+{enc_features[-(i + 1)]} → {ch}",
+        ax.text(x_dec - 1.75, y + 0.3, f"{enc_features[-(i + 1)]}+{in_ch_str} → {ch}",
                 ha="center", va="center", fontsize=9)
         decoder_positions.append((x_dec - 2.5, y + 0.3))
 
@@ -243,7 +244,9 @@ def plot_unet_schematic(enc_features, dec_features, bottleneck_out,
 
 def rebuild_pruned_unet(model, masks, save_path=None):
     """Main orchestrator."""
+
     print("🔧 Rebuilding pruned UNet architecture...")
+
     enc_features, bottleneck_out, dec_features = get_pruned_feature_sizes(model, masks)
     print(f"Encoder features: {enc_features}")
     print(f"Bottleneck out_channels: {bottleneck_out}")
@@ -260,6 +263,18 @@ def rebuild_pruned_unet(model, masks, save_path=None):
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         torch.save(pruned_model.state_dict(), save_path)
         print(f"💾 Saved pruned model to {save_path}")
+
+        meta = {
+            "enc_features": enc_features,
+            "dec_features": dec_features,
+            "bottleneck_out": bottleneck_out,
+        }
+
+        meta_path = save_path.replace(".pth", "_meta.json")
+        with open(meta_path, "w") as f:
+            json.dump(meta, f, indent=4)
+
+        print(f"🧾 Saved metadata to: {meta_path}")
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model
