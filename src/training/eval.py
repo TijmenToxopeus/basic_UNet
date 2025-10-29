@@ -98,8 +98,6 @@ def evaluate(debug=True):
     model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
     if subfolder == "pruned":
         model = build_pruned_unet(model, enc_features, dec_features, bottleneck_out).to(device)
-    else:
-        model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
 
     state = torch.load(model_checkpoint, map_location=device)
     model.load_state_dict(state)
