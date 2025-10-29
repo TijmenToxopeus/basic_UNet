@@ -59,7 +59,7 @@ def model_to_dataframe(model: nn.Module):
 
 def model_to_dataframe_with_l1(
     model: nn.Module,
-    remove_nan_layers: bool = True,
+    remove_nan_layers: bool = False,
     block_ratios: dict = None,
     post_prune_ratios: dict = None
 ):
@@ -216,41 +216,41 @@ def compute_actual_prune_ratios(original_model, pruned_model):
     return ratios
 
 
-def compare_models(model_before, model_after):
-    """Print difference in layer shapes or number of filters."""
-    print("🔍 Comparing model structures before and after pruning:")
-    print("───────────────────────────────")
+# def compare_models(model_before, model_after):
+#     """Print difference in layer shapes or number of filters."""
+#     print("🔍 Comparing model structures before and after pruning:")
+#     print("───────────────────────────────")
 
-    def get_layer_info(module):
-        info = {}
-        for name, layer in module.named_children():
-            if hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
-                info[name] = tuple(layer.weight.shape)
-            else:
-                info[name] = None
-            info.update({f"{name}.{k}": v for k, v in get_layer_info(layer).items()})
-        return info
+#     def get_layer_info(module):
+#         info = {}
+#         for name, layer in module.named_children():
+#             if hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
+#                 info[name] = tuple(layer.weight.shape)
+#             else:
+#                 info[name] = None
+#             info.update({f"{name}.{k}": v for k, v in get_layer_info(layer).items()})
+#         return info
 
-    before_info = get_layer_info(model_before)
-    after_info = get_layer_info(model_after)
+#     before_info = get_layer_info(model_before)
+#     after_info = get_layer_info(model_after)
 
-    for layer_name in before_info.keys():
-        before_shape = before_info[layer_name]
-        after_shape = after_info.get(layer_name, None)
-        if before_shape != after_shape:
-            print(f"Layer: {layer_name}")
-            print(f"  Before: {before_shape}")
-            print(f"  After:  {after_shape}")
-            print("───────────────────────────────")
+#     for layer_name in before_info.keys():
+#         before_shape = before_info[layer_name]
+#         after_shape = after_info.get(layer_name, None)
+#         if before_shape != after_shape:
+#             print(f"Layer: {layer_name}")
+#             print(f"  Before: {before_shape}")
+#             print(f"  After:  {after_shape}")
+#             print("───────────────────────────────")
 
-def layer_sparsity_report(model):
-    """Compute and print per-layer sparsity percentage."""
-    print("📊 Layer-wise sparsity report:")
-    print("───────────────────────────────")
-    for name, layer in model.named_modules():
-        if hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
-            total_params = layer.weight.numel()
-            zero_params = torch.sum(layer.weight == 0).item()
-            sparsity = (zero_params / total_params) * 100
-            print(f"{name:<40} Sparsity: {sparsity:.2f}% ({zero_params}/{total_params})")
-    print("───────────────────────────────")
+# def layer_sparsity_report(model):
+#     """Compute and print per-layer sparsity percentage."""
+#     print("📊 Layer-wise sparsity report:")
+#     print("───────────────────────────────")
+#     for name, layer in model.named_modules():
+#         if hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
+#             total_params = layer.weight.numel()
+#             zero_params = torch.sum(layer.weight == 0).item()
+#             sparsity = (zero_params / total_params) * 100
+#             print(f"{name:<40} Sparsity: {sparsity:.2f}% ({zero_params}/{total_params})")
+#     print("───────────────────────────────")
