@@ -153,22 +153,20 @@ def model_to_dataframe_with_l1(
 
 def get_pruning_masks_blockwise(df, block_ratios=None, default_ratio=0.3):
     """
-    Generate structured pruning masks for Conv2d layers, grouped by UNet blocks.
+    Generate structured pruning masks for Conv2d layers, grouped by U-Net blocks.
 
     Args:
         df (pd.DataFrame): model summary with L1 stats.
         block_ratios (dict): optional {block_name: prune_ratio} mapping.
                              e.g. {"encoders.0": 0.2, "encoders.1": 0.3, "bottleneck": 0.4}
-        default_ratio (float): used for blocks not in block_ratios.
+        default_ratio (float): used for blocks not listed in block_ratios.
 
     Returns:
         dict: {layer_name: torch.BoolTensor mask}
     """
     masks = {}
-    
-    # Keep only Conv2d layers
-    #conv_df = df[df["Type"].str.contains("Conv2d")].dropna(subset=["Mean L1"])
 
+    # --- Filter only Conv2d layers (ignore final output conv) ---
     conv_df = (
         df[
             (df["Type"].str.contains("Conv2d")) &
@@ -176,26 +174,88 @@ def get_pruning_masks_blockwise(df, block_ratios=None, default_ratio=0.3):
         ].dropna(subset=["Mean L1"])
     )
 
+    print("🔧 Generating pruning masks...\n")
+
     for _, row in conv_df.iterrows():
         name = row["Layer"]
         num_out = int(row["Out Ch"])
 
-        # Identify block name — everything up to ".net"
+        # Identify block name — normalize to avoid "bottleneck.net"
         block = ".".join(name.split(".")[:2])
+        block = block.replace(".net", "")  # normalize
+
         ratio = block_ratios.get(block, default_ratio) if block_ratios else default_ratio
 
-        # reconstruct approximate per-filter L1 values
-        l1_vals = np.linspace(row["Min L1"], row["Max L1"], num_out)
+        # --- Handle edge cases explicitly ---
+        if ratio <= 0.0:
+            mask = torch.ones(num_out, dtype=torch.bool)
+            print(f"Block {block:15s} | ratio=0.00 → keeping all {num_out} filters.")
+        elif ratio >= 1.0:
+            mask = torch.zeros(num_out, dtype=torch.bool)
+            print(f"Block {block:15s} | ratio=1.00 → pruning all {num_out} filters.")
+        else:
+            # Reconstruct approximate per-filter L1 values
+            l1_vals = np.linspace(row["Min L1"], row["Max L1"], num_out)
 
-        # Compute local threshold for this block
-        local_thresh = np.percentile(l1_vals, ratio * 100)
-        mask = torch.tensor(l1_vals > local_thresh)
+            # Compute threshold for this block
+            local_thresh = np.percentile(l1_vals, ratio * 100)
+            mask = torch.tensor(l1_vals > local_thresh)
+
+            num_kept = mask.sum().item()
+            print(f"Block {block:15s} | Layer {name:25s} | ratio={ratio:.2f} | "
+                  f"threshold={local_thresh:.4f} | kept {num_kept}/{num_out}")
 
         masks[name] = mask
-        print(f"Block {block} | Layer {name} | ratio={ratio:.2f} | threshold={local_thresh:.4f}")
 
-    print(f"\n✅ Generated pruning masks for {len(masks)} layers across blocks.")
+    print(f"\n✅ Generated pruning masks for {len(masks)} Conv2d layers.\n")
     return masks
+
+
+# def get_pruning_masks_blockwise(df, block_ratios=None, default_ratio=0.3):
+#     """
+#     Generate structured pruning masks for Conv2d layers, grouped by UNet blocks.
+
+#     Args:
+#         df (pd.DataFrame): model summary with L1 stats.
+#         block_ratios (dict): optional {block_name: prune_ratio} mapping.
+#                              e.g. {"encoders.0": 0.2, "encoders.1": 0.3, "bottleneck": 0.4}
+#         default_ratio (float): used for blocks not in block_ratios.
+
+#     Returns:
+#         dict: {layer_name: torch.BoolTensor mask}
+#     """
+#     masks = {}
+    
+#     # Keep only Conv2d layers
+#     #conv_df = df[df["Type"].str.contains("Conv2d")].dropna(subset=["Mean L1"])
+
+#     conv_df = (
+#         df[
+#             (df["Type"].str.contains("Conv2d")) &
+#             (~df["Layer"].str.contains("final_conv"))
+#         ].dropna(subset=["Mean L1"])
+#     )
+
+#     for _, row in conv_df.iterrows():
+#         name = row["Layer"]
+#         num_out = int(row["Out Ch"])
+
+#         # Identify block name — everything up to ".net"
+#         block = ".".join(name.split(".")[:2])
+#         ratio = block_ratios.get(block, default_ratio) if block_ratios else default_ratio
+
+#         # reconstruct approximate per-filter L1 values
+#         l1_vals = np.linspace(row["Min L1"], row["Max L1"], num_out)
+
+#         # Compute local threshold for this block
+#         local_thresh = np.percentile(l1_vals, ratio * 100)
+#         mask = torch.tensor(l1_vals > local_thresh)
+
+#         masks[name] = mask
+#         print(f"Block {block} | Layer {name} | ratio={ratio:.2f} | threshold={local_thresh:.4f}")
+
+#     print(f"\n✅ Generated pruning masks for {len(masks)} layers across blocks.")
+#     return masks
 
 def compute_actual_prune_ratios(original_model, pruned_model):
     """

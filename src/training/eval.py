@@ -59,7 +59,7 @@ def evaluate(debug=True):
     in_ch = 1
     out_ch = 4
     enc_features = [51, 96, 192, 384]
-    dec_features = [384, 192, 96, 48]
+    dec_features = [384, 192, 96, 51]
     bottleneck_out = 768
 
     num_visuals = 3
