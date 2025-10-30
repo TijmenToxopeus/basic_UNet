@@ -44,12 +44,12 @@ def evaluate(debug=True):
     # --- USER CONFIGURATION SECTION ---
     # ============================================================
 
-    model_checkpoint = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/pruned_model.pth"
+    model_checkpoint = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/retraining/final_model.pth"
     save_root = "results"
     model_name = "UNet_ACDC"
     run_name = "exp1"
     subfolder = "pruned"
-    phase = "evaluation"
+    phase = "evaluation_retrained"
 
     img_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs"
     lbl_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs"
@@ -58,14 +58,15 @@ def evaluate(debug=True):
 
 
     if subfolder == "pruned":
-        meta_path = model_checkpoint.replace(".pth", "_meta.json")
+        # meta_path = model_checkpoint.replace(".pth", "_meta.json")
+        meta_path = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/pruned_model_meta.json"
         with open(meta_path, "r") as f:
             meta = json.load(f)
         enc_features = meta["enc_features"]
         dec_features = meta["dec_features"]
         bottleneck_out = meta["bottleneck_out"]
     else:
-        enc_features = [51, 96, 192, 384]
+        enc_features = [51, 96, 192, 384] # Need to make this dynamic as well
         dec_features = [384, 192, 96, 51]
         bottleneck_out = 768
 
@@ -98,6 +99,8 @@ def evaluate(debug=True):
     model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
     if subfolder == "pruned":
         model = build_pruned_unet(model, enc_features, dec_features, bottleneck_out).to(device)
+
+    # Need to load a saved pruned model instead of pruning it here
 
     state = torch.load(model_checkpoint, map_location=device)
     model.load_state_dict(state)
