@@ -1,113 +1,3 @@
-# import os
-# import torch
-# import numpy as np
-# import nibabel as nib
-# from torch.utils.data import Dataset, DataLoader
-# import torchvision.transforms.functional as TF
-# import random
-
-
-# class ACDC2DSlices(Dataset):
-#     """
-#     Dataset loader for 2D slices from ACDC.
-#     For each 3D volume, loads the 10 central slices (or fewer if volume <10 slices).
-#     """
-#     def __init__(self, img_dir, lbl_dir, slice_axis=0, normalize=True,
-#                  target_size=(256, 256), augment=False, num_slices_per_volume=30):
-#         self.slice_axis = slice_axis
-#         self.normalize = normalize
-#         self.target_size = target_size
-#         self.augment = augment
-#         self.num_slices_per_volume = num_slices_per_volume
-
-#         self.img_paths = sorted([os.path.join(img_dir, f) for f in os.listdir(img_dir) if f.endswith(".nii.gz")])
-#         self.lbl_paths = sorted([os.path.join(lbl_dir, f) for f in os.listdir(lbl_dir) if f.endswith(".nii.gz")])
-#         assert len(self.img_paths) == len(self.lbl_paths), "Number of images and labels must match!"
-
-#         # Build (img_path, lbl_path, slice_index) list for 10 central slices
-#         self.samples = []
-#         for img_path, lbl_path in zip(self.img_paths, self.lbl_paths):
-#             img = nib.load(img_path).get_fdata()
-#             num_slices = img.shape[self.slice_axis]
-
-#             # Compute indices for 10 central slices
-#             if num_slices <= num_slices_per_volume:
-#                 slice_indices = list(range(num_slices))
-#             else:
-#                 center = num_slices // 2
-#                 half = num_slices_per_volume // 2
-#                 start = max(center - half, 0)
-#                 end = min(center + half, num_slices)
-#                 slice_indices = list(range(start, end))
-
-#             for s in slice_indices:
-#                 self.samples.append((img_path, lbl_path, s))
-
-#     def __len__(self):
-#         return len(self.samples)
-
-#     def __getitem__(self, idx):
-#         img_path, lbl_path, s = self.samples[idx]
-#         img = nib.load(img_path).get_fdata()
-#         lbl = nib.load(lbl_path).get_fdata()
-
-#         # Extract 2D slice
-#         img = np.take(img, s, axis=self.slice_axis)
-#         lbl = np.take(lbl, s, axis=self.slice_axis)
-
-#         # Normalize
-#         if self.normalize:
-#             img = (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
-
-#         # To tensors
-#         img = torch.from_numpy(img).float().unsqueeze(0)
-#         lbl = torch.from_numpy(lbl).long()
-
-#         # Resize
-#         img = TF.resize(img, self.target_size, antialias=True)
-#         lbl = TF.resize(lbl.unsqueeze(0).float(), self.target_size, antialias=False).squeeze(0).long()
-
-#         # ---------- Augmentations ----------
-#         if self.augment:
-#             # if random.random() < 0.5:
-#             #     img = torch.flip(img, dims=[2])
-#             #     lbl = torch.flip(lbl, dims=[1])
-#             # if random.random() < 0.5:
-#             #     img = torch.flip(img, dims=[1])
-#             #     lbl = torch.flip(lbl, dims=[0])
-#             # if random.random() < 0.5:
-#                 angle = random.uniform(-15, 15)
-#                 img = TF.rotate(img, angle)
-#                 lbl = TF.rotate(lbl.unsqueeze(0).float(), angle, interpolation=TF.InterpolationMode.NEAREST).squeeze(0).long()
-#             # if random.random() < 0.5:
-#             #     factor = random.uniform(0.9, 1.1)
-#             #     img = TF.adjust_brightness(img, factor)
-#             #     img = TF.adjust_contrast(img, factor)
-
-#         return img, lbl
-
-
-# def get_train_val_loaders(img_dir, lbl_dir, batch_size=2, val_ratio=0.2, shuffle=True):
-#     dataset = ACDC2DSlices(img_dir, lbl_dir, augment=True, num_slices_per_volume=10)
-#     val_size = int(len(dataset) * val_ratio)
-#     train_size = len(dataset) - val_size
-#     train_ds, val_ds = torch.utils.data.random_split(dataset, [train_size, val_size])
-#     val_ds.dataset.augment = False  # disable augmentations for validation
-#     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
-#     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-#     return train_loader, val_loader
-
-
-# if __name__ == "__main__":
-#     img_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
-#     lbl_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
-#     loader, _ = get_train_val_loaders(img_dir, lbl_dir)
-#     imgs, lbls = next(iter(loader))
-#     print("Image batch:", imgs.shape)
-#     print("Label batch:", lbls.shape, "Unique labels:", torch.unique(lbls))
-
-
-
 import os
 import torch
 import numpy as np
@@ -127,7 +17,7 @@ class SegmentationDataset(Dataset):
         self,
         img_dir,
         lbl_dir,
-        slice_axis=0,
+        slice_axis=2,
         normalize=True,
         target_size=(256, 256),
         augment=False,
@@ -158,10 +48,11 @@ class SegmentationDataset(Dataset):
             img_nii = nib.load(img_path)
             num_slices = img_nii.shape[self.slice_axis]
 
-            # Select central slices
-            if num_slices <= num_slices_per_volume:
+            if num_slices_per_volume is None or num_slices <= num_slices_per_volume:
+                # Use all slices if None or fewer than limit
                 slice_indices = list(range(num_slices))
             else:
+                # Use only central subset
                 center = num_slices // 2
                 half = num_slices_per_volume // 2
                 start = max(center - half, 0)

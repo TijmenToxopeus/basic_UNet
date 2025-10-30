@@ -23,23 +23,25 @@ from src.pruning.rebuild import rebuild_pruned_unet
 # --- USER CONFIGURATION ---
 # ============================================================
 
-BASELINE_CKPT = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/baseline/training/final_model.pth"
-SAVE_PATH = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/pruned_model.pth"
+BASELINE_CKPT = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp2_larger_UNet/baseline/training/final_model.pth"
+SAVE_PATH = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp2_larger_UNet/pruned/pruned_model.pth"
 
 in_ch = 1
 out_ch = 4
-enc_features = [64, 128, 256, 512]
+enc_features = [64, 128, 256, 512, 1024]
 
 block_ratios = {
     "encoders.0": 0.0,
     "encoders.1": 0.0,
     "encoders.2": 0.1,
     "encoders.3": 0.2,
+    "encoders.4": 0.3,
     "bottleneck": 0.3,
-    "decoders.1": 0.2,
-    "decoders.3": 0.1,
-    "decoders.5": 0.0,
+    "decoders.1": 0.3,
+    "decoders.3": 0.2,
+    "decoders.5": 0.1,
     "decoders.7": 0.0,
+    "decoders.9": 0.0,
 }
 default_ratio = 0.25
 

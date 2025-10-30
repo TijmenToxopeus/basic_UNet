@@ -44,31 +44,31 @@ def evaluate(debug=True):
     # --- USER CONFIGURATION SECTION ---
     # ============================================================
 
-    model_checkpoint = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/retraining/final_model.pth"
+    model_checkpoint = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp2_larger_UNet/pruned/retraining/final_model.pth"
     save_root = "results"
     model_name = "UNet_ACDC"
-    run_name = "exp1"
+    run_name = "exp2_larger_UNet"
     subfolder = "pruned"
-    phase = "evaluation_retrained"
+    phase = "retrained_evaluation"
 
     img_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs"
     lbl_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs"
-    num_slices_per_volume = 30
+    num_slices_per_volume = 4
     batch_size = 1
 
 
     if subfolder == "pruned":
         # meta_path = model_checkpoint.replace(".pth", "_meta.json")
-        meta_path = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp1/pruned/pruned_model_meta.json"
+        meta_path = "/media/ttoxopeus/basic_UNet/results/UNet_ACDC/exp2_larger_UNet/pruned/pruned_model_meta.json"
         with open(meta_path, "r") as f:
             meta = json.load(f)
         enc_features = meta["enc_features"]
         dec_features = meta["dec_features"]
         bottleneck_out = meta["bottleneck_out"]
     else:
-        enc_features = [51, 96, 192, 384] # Need to make this dynamic as well
-        dec_features = [384, 192, 96, 51]
-        bottleneck_out = 768
+        enc_features = [64, 128, 256, 512, 1024] # Need to make this dynamic as well
+        dec_features = enc_features[::-1]
+        bottleneck_out = 2048
 
     in_ch = 1
     out_ch = 4
