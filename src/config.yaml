@@ -1,0 +1,76 @@
+# ===============================================================
+# Configuration for L1-norm Pruning of UNet on ACDC Dataset
+# ===============================================================
+
+experiment:
+  experiment_name: "exp5"
+  model_name: "UNet_ACDC"
+  seed: 42
+  device: "cuda"
+
+# ---------------------------------------------------------------
+# TRAINING CONFIGURATION
+# ---------------------------------------------------------------
+train:
+  paths:
+    train_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
+    label_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
+    save_root: "results"
+    subfolder: "retrain"         # baseline or pruned
+  phase: "retraining"               # training or retraining
+  val_ratio: 0.2
+  batch_size: 8
+  num_slices_per_volume: null     # use all slices
+  model:
+    in_channels: 1
+    out_channels: 4
+    features: [64, 128, 256]
+  parameters:
+    learning_rate: 1e-4
+    num_epochs: 5
+    save_interval: 10
+    loss_function: "ce"
+
+# ---------------------------------------------------------------
+# EVALUATION CONFIGURATION
+# ---------------------------------------------------------------
+evaluation:
+  # --- Mode selection ---
+  target: "pruned"        # options: "baseline", "pruned", "retrain"
+  phase: "evaluation"       # "evaluation" or "retrained_evaluation"
+
+  paths:
+    eval_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs"
+    label_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs"
+    save_root: "results"
+
+  batch_size: 1
+  num_slices_per_volume: null
+  num_visuals: 3
+
+# ---------------------------------------------------------------
+# PRUNING CONFIGURATION
+# ---------------------------------------------------------------
+pruning:
+  method: "l1_norm"               # or "l2_norm", "random", etc.
+  ckpt:
+    root: "results"
+    subfolder: "baseline"         # where to load baseline model
+    phase: "pruning"
+    ckpt_name: "final_model.pth"
+  save:
+    root: "results"
+    subfolder: "pruned"           # where to save pruned model
+    phase: "pruning"
+    filename: "pruned_model.pth"
+  ratios:
+    default: 0.25                 # used if block not specified
+    block_ratios:
+      encoders.0: 0.0
+      encoders.1: 0.0
+      encoders.2: 0.1
+      bottleneck: 0.3
+      decoders.2: 0.3
+      decoders.1: 0.2
+      decoders.0: 0.1
+

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import os
 import json
+from pathlib import Path
 from src.models.unet import UNet
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -270,11 +271,10 @@ def rebuild_pruned_unet(model, masks, save_path=None):
             "bottleneck_out": bottleneck_out,
         }
 
-        meta_path = save_path.replace(".pth", "_meta.json")
+        meta_path = save_path.with_name(save_path.stem + "_meta.json")
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=4)
-
-        print(f"🧾 Saved metadata to: {meta_path}")
+        print(f"🧾 Saved metadata to {meta_path}")
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model
