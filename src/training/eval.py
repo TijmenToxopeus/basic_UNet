@@ -18,11 +18,22 @@ from src.utils.paths import get_paths
 # ------------------------------------------------------------
 # EVALUATION PIPELINE
 # ------------------------------------------------------------
-def evaluate(debug=False):
+# def evaluate(debug=False):
+#     # ============================================================
+#     # --- LOAD CONFIG & PATHS ---
+#     # ============================================================
+#     cfg, config_path = load_config(return_path=True)
+#     paths = get_paths(cfg, config_path)
+
+def evaluate(cfg=None, debug=False):
     # ============================================================
     # --- LOAD CONFIG & PATHS ---
     # ============================================================
-    cfg, config_path = load_config(return_path=True)
+    if cfg is None:
+        cfg, config_path = load_config(return_path=True)
+    else:
+        config_path = None
+
     paths = get_paths(cfg, config_path)
 
     exp_cfg = cfg["experiment"]

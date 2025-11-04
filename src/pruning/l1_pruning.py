@@ -25,11 +25,22 @@ from src.utils.paths import get_paths
 # ------------------------------------------------------------
 # MAIN PRUNING PIPELINE
 # ------------------------------------------------------------
-def run_pruning():
+# def run_pruning():
+#     # ============================================================
+#     # --- LOAD CONFIGURATION ---
+#     # ============================================================
+#     cfg, config_path = load_config(return_path=True)
+#     paths = get_paths(cfg, config_path)
+
+def run_pruning(cfg=None):
     # ============================================================
     # --- LOAD CONFIGURATION ---
     # ============================================================
-    cfg, config_path = load_config(return_path=True)
+    if cfg is None:
+        cfg, config_path = load_config(return_path=True)
+    else:
+        config_path = None
+
     paths = get_paths(cfg, config_path)
     pruning_cfg = cfg["pruning"]
     model_cfg = cfg["train"]["model"]

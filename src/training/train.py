@@ -20,11 +20,22 @@ from src.utils.paths import get_paths
 # ------------------------------------------------------------
 # TRAINING PIPELINE
 # ------------------------------------------------------------
-def train_model():
+# def train_model():
+#     # ============================================================
+#     # --- LOAD CONFIGURATION ---
+#     # ============================================================
+#     cfg, config_path = load_config(return_path=True)
+#     paths = get_paths(cfg, config_path)
+
+def train_model(cfg=None):
     # ============================================================
     # --- LOAD CONFIGURATION ---
     # ============================================================
-    cfg, config_path = load_config(return_path=True)
+    if cfg is None:
+        cfg, config_path = load_config(return_path=True)
+    else:
+        config_path = None
+
     paths = get_paths(cfg, config_path)
     paths.save_config_snapshot()
 
