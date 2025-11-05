@@ -9,6 +9,7 @@
 # import json
 # import torch
 # import pandas as pd
+# import wandb  # ✅ added
 
 # from src.models.unet import UNet
 # from src.pruning.model_inspect import (
@@ -38,11 +39,25 @@
 #     pruning_cfg = cfg["pruning"]
 #     model_cfg = cfg["train"]["model"]
 
-#     print(f"✂️ Starting L1-based structured pruning for {cfg['experiment']['model_name']}")
+#     exp_name = cfg["experiment"]["experiment_name"]
+#     model_name = cfg["experiment"]["model_name"]
+#     print(f"✂️ Starting L1-based structured pruning for {model_name}")
 #     print(paths)
 
 #     block_ratios = pruning_cfg.get("ratios", {}).get("block_ratios", {})
 #     default_ratio = pruning_cfg.get("ratios", {}).get("default", 0.25)
+
+#     # ============================================================
+#     # --- INIT WANDB RUN ---
+#     # ============================================================
+#     wandb.init(
+#         project="unet-pruning",
+#         group=exp_name,
+#         job_type="pruning",
+#         name=f"{exp_name}_pruning",
+#         config=cfg,
+#         dir=str(paths.base_dir),
+#     )
 
 #     # ============================================================
 #     # --- LOAD BASELINE MODEL ---
@@ -56,8 +71,8 @@
 #     enc_features = model_cfg["features"]
 
 #     device = torch.device(cfg["experiment"].get("device", "cuda" if torch.cuda.is_available() else "cpu"))
-
 #     print(f"📦 Loading baseline model from: {baseline_ckpt}")
+
 #     model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
 #     state = torch.load(baseline_ckpt, map_location=device)
 #     model.load_state_dict(state)
@@ -66,26 +81,26 @@
 #     # ============================================================
 #     # --- COMPUTE L1 NORMS ---
 #     # ============================================================
-#     #print("📊 Computing L1 norms for all Conv layers...")
+#     print("📊 Computing L1 norms for all Conv layers...")
 #     norms = compute_l1_norms(model)
 #     l1_stats = compute_l1_stats(norms)
-
 #     df = model_to_dataframe_with_l1(model, l1_stats, remove_nan_layers=True)
 #     pd.set_option("display.max_rows", None)
-#     #print(df[["Layer", "Out Ch", "Mean L1", "Min L1", "Max L1"]].head(10))
-#     #print("✅ L1 statistics computed.\n")
+#     print("✅ L1 statistics computed.\n")
+
+#     # Log table of L1 stats to W&B
+#     wandb.log({"l1_norms": wandb.Table(dataframe=df)})
 
 #     # ============================================================
 #     # --- GENERATE MASKS ---
 #     # ============================================================
-#     #print("✂️ Generating pruning masks...")
+#     print("✂️ Generating pruning masks...")
 #     masks = get_pruning_masks_blockwise(model, norms, block_ratios=block_ratios, default_ratio=default_ratio)
 #     print("✅ Pruning masks generated.\n")
 
 #     # ============================================================
 #     # --- REBUILD PRUNED MODEL ---
 #     # ============================================================
-#     # os.makedirs(paths.pruned_dir, exist_ok=True)
 #     paths.ensure_dir(paths.pruned_model_dir)
 #     pruned_model = rebuild_pruned_unet(model, masks, save_path=paths.pruned_model)
 
@@ -99,12 +114,20 @@
 #     meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
 #     print(f"📉 Parameter reduction: {reduction:.2f}% ({orig_params/1e6:.2f}M → {pruned_params/1e6:.2f}M)")
 
+#     # Log summary metrics to W&B
+#     wandb.log({
+#         "orig_params": orig_params,
+#         "pruned_params": pruned_params,
+#         "reduction_percent": reduction,
+#         "default_ratio": default_ratio,
+#     })
+
 #     # ============================================================
 #     # --- SAVE SUMMARY JSON ---
 #     # ============================================================
 #     summary = {
-#         "experiment": cfg["experiment"]["experiment_name"],
-#         "model_name": cfg["experiment"]["model_name"],
+#         "experiment": exp_name,
+#         "model_name": model_name,
 #         "block_ratios": block_ratios,
 #         "default_ratio": default_ratio,
 #         "orig_params": int(orig_params),
@@ -118,6 +141,13 @@
 #     summary_path = paths.pruned_model_dir / "pruning_summary.json"
 #     with open(summary_path, "w") as f:
 #         json.dump(summary, f, indent=4)
+
+#     wandb.save(str(summary_path))
+#     wandb.save(str(paths.pruned_model))
+#     wandb.finish()
+
+#     print(f"💾 Summary saved to {summary_path}")
+#     print("✅ Pruning complete.\n")
 
 
 # if __name__ == "__main__":
@@ -135,7 +165,7 @@ import os
 import json
 import torch
 import pandas as pd
-import wandb  # ✅ added
+import wandb
 
 from src.models.unet import UNet
 from src.pruning.model_inspect import (
@@ -147,6 +177,7 @@ from src.pruning.model_inspect import (
 from src.pruning.rebuild import rebuild_pruned_unet
 from src.utils.config import load_config
 from src.utils.paths import get_paths
+from src.utils.wandb_utils import setup_wandb
 
 
 # ------------------------------------------------------------
@@ -176,14 +207,7 @@ def run_pruning(cfg=None):
     # ============================================================
     # --- INIT WANDB RUN ---
     # ============================================================
-    wandb.init(
-        project="unet-pruning",
-        group=exp_name,
-        job_type="pruning",
-        name=f"{exp_name}_pruning",
-        config=cfg,
-        dir=str(paths.base_dir),
-    )
+    run = setup_wandb(cfg, job_type="pruning")
 
     # ============================================================
     # --- LOAD BASELINE MODEL ---
@@ -214,7 +238,7 @@ def run_pruning(cfg=None):
     pd.set_option("display.max_rows", None)
     print("✅ L1 statistics computed.\n")
 
-    # Log table of L1 stats to W&B
+    # Log L1 norm table to W&B
     wandb.log({"l1_norms": wandb.Table(dataframe=df)})
 
     # ============================================================
@@ -240,12 +264,13 @@ def run_pruning(cfg=None):
     meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
     print(f"📉 Parameter reduction: {reduction:.2f}% ({orig_params/1e6:.2f}M → {pruned_params/1e6:.2f}M)")
 
-    # Log summary metrics to W&B
+    # Log parameter stats to W&B
     wandb.log({
         "orig_params": orig_params,
         "pruned_params": pruned_params,
         "reduction_percent": reduction,
         "default_ratio": default_ratio,
+        **{f"ratio_{k}": v for k, v in block_ratios.items()}
     })
 
     # ============================================================
@@ -270,7 +295,8 @@ def run_pruning(cfg=None):
 
     wandb.save(str(summary_path))
     wandb.save(str(paths.pruned_model))
-    wandb.finish()
+
+    run.finish()
 
     print(f"💾 Summary saved to {summary_path}")
     print("✅ Pruning complete.\n")

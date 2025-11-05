@@ -6,6 +6,8 @@
 # from torch.utils.data import DataLoader
 # from torch.optim.lr_scheduler import ReduceLROnPlateau
 # from tqdm import tqdm
+# import wandb  
+
 
 # # --- Project imports ---
 # from src.models.unet import UNet
@@ -15,12 +17,12 @@
 # from src.pruning.rebuild import build_pruned_unet
 # from src.utils.config import load_config
 # from src.utils.paths import get_paths
+# from src.utils.wandb_utils import setup_wandb
 
 
 # # ------------------------------------------------------------
 # # TRAINING PIPELINE
 # # ------------------------------------------------------------
-# # def train_model():
 # def train_model(cfg=None):
 #     # ============================================================
 #     # --- LOAD CONFIGURATION ---
@@ -62,6 +64,18 @@
 
 #     in_ch = model_cfg["in_channels"]
 #     out_ch = model_cfg["out_channels"]
+
+#     # ============================================================
+#     # --- INITIALIZE WANDB ---
+#     # ============================================================
+#     wandb.init(
+#         project="unet-pruning",
+#         group=exp_cfg["experiment_name"],
+#         job_type=phase,
+#         name=f"{exp_cfg['experiment_name']}_{phase}",
+#         config=cfg,
+#         dir=str(paths.base_dir),
+#     )
 
 #     # ============================================================
 #     # --- BUILD MODEL ---
@@ -156,11 +170,21 @@
 #         metrics_log["val_iou"].append(val_iou)
 #         metrics_log["lr"].append(current_lr)
 
+#         # ✅ Log to W&B
+#         wandb.log({
+#             "epoch": epoch + 1,
+#             "train_loss": avg_loss,
+#             "val_dice": val_dice,
+#             "val_iou": val_iou,
+#             "lr": current_lr,
+#         })
+
 #         # --- Save checkpoint ---
 #         if (epoch + 1) % save_interval == 0 or (epoch + 1) == epochs:
 #             ckpt_path = os.path.join(save_dir, f"epoch_{epoch+1}.pth")
 #             torch.save(model.state_dict(), ckpt_path)
 #             print(f"💾 Saved checkpoint: {ckpt_path}")
+#             wandb.save(ckpt_path)
 
 #     # ============================================================
 #     # --- SAVE METRICS & PLOTS ---
@@ -168,6 +192,7 @@
 #     final_model_path = os.path.join(save_dir, "final_model.pth")
 #     torch.save(model.state_dict(), final_model_path)
 #     print(f"💾 Saved final model: {final_model_path}")
+#     wandb.save(final_model_path)
 
 #     with open(os.path.join(save_dir, "metrics.json"), "w") as f:
 #         json.dump(metrics_log, f, indent=4)
@@ -181,8 +206,10 @@
 #     plt.title(f"Training Progress ({phase})")
 #     plt.legend()
 #     plt.grid(True)
-#     plt.savefig(os.path.join(save_dir, "training_curves.png"))
+#     plot_path = os.path.join(save_dir, "training_curves.png")
+#     plt.savefig(plot_path)
 #     plt.close()
+#     wandb.log({"training_curve": wandb.Image(plot_path)})
 
 #     summary = {
 #         "model_name": exp_cfg["model_name"],
@@ -200,11 +227,11 @@
 #         json.dump(summary, f, indent=4)
 
 #     print("✅ Training complete.")
+#     wandb.finish()
 
 
 # if __name__ == "__main__":
 #     train_model()
-
 
 
 import os
@@ -215,7 +242,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
-import wandb  # ✅ added
+import wandb  
 
 # --- Project imports ---
 from src.models.unet import UNet
@@ -225,6 +252,7 @@ from src.training.data_loader import get_train_val_loaders
 from src.pruning.rebuild import build_pruned_unet
 from src.utils.config import load_config
 from src.utils.paths import get_paths
+from src.utils.wandb_utils import setup_wandb
 
 
 # ------------------------------------------------------------
@@ -275,14 +303,8 @@ def train_model(cfg=None):
     # ============================================================
     # --- INITIALIZE WANDB ---
     # ============================================================
-    wandb.init(
-        project="unet-pruning",
-        group=exp_cfg["experiment_name"],
-        job_type=phase,
-        name=f"{exp_cfg['experiment_name']}_{phase}",
-        config=cfg,
-        dir=str(paths.base_dir),
-    )
+    run = setup_wandb(cfg, job_type="training")
+    wandb.watch_called = False  # ensure no duplicate hooks
 
     # ============================================================
     # --- BUILD MODEL ---
@@ -305,6 +327,8 @@ def train_model(cfg=None):
     else:
         print(f"🧠 Building baseline UNet → features {model_cfg['features']}")
         model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=model_cfg["features"]).to(device)
+
+    wandb.watch(model, log="all")
 
     # ============================================================
     # --- DATA & OPTIMIZATION SETUP ---
@@ -434,7 +458,7 @@ def train_model(cfg=None):
         json.dump(summary, f, indent=4)
 
     print("✅ Training complete.")
-    wandb.finish()
+    run.finish()
 
 
 if __name__ == "__main__":

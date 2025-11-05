@@ -1,3 +1,4 @@
+
 # import os
 # import json
 # import random
@@ -6,6 +7,7 @@
 # import matplotlib.pyplot as plt
 # from torch.utils.data import DataLoader
 # from tqdm import tqdm
+# import wandb  # ✅ added
 
 # from src.models.unet import UNet
 # from src.training.data_loader import SegmentationDataset
@@ -34,14 +36,23 @@
 
 #     phase = eval_cfg["phase"].lower()
 #     valid_phases = ["baseline_evaluation", "pruned_evaluation", "retrained_pruned_evaluation"]
-
 #     if phase not in valid_phases:
-#         raise ValueError(
-#             f"❌ Invalid phase '{phase}'. Must be one of: {', '.join(valid_phases)}"
-#         )
+#         raise ValueError(f"❌ Invalid phase '{phase}'. Must be one of: {', '.join(valid_phases)}")
 
 #     print(f"🔍 Starting evaluation phase: {phase} for {exp_cfg['experiment_name']} ({exp_cfg['model_name']})")
 #     print(paths)
+
+#     # ============================================================
+#     # --- WANDB INITIALIZATION ---
+#     # ============================================================
+#     wandb.init(
+#         project="unet-pruning",
+#         group=exp_cfg["experiment_name"],
+#         job_type=phase,
+#         name=f"{exp_cfg['experiment_name']}_{phase}",
+#         config=cfg,
+#         dir=str(paths.base_dir),
+#     )
 
 #     # ============================================================
 #     # --- CONFIG PARAMETERS ---
@@ -58,7 +69,6 @@
 #     img_dir = paths.eval_dir
 #     lbl_dir = paths.eval_label_dir
 #     save_dir = paths.eval_save_dir
-#     # os.makedirs(save_dir, exist_ok=True)
 #     paths.ensure_dir(save_dir)
 
 #     # ============================================================
@@ -66,18 +76,13 @@
 #     # ============================================================
 #     if phase == "baseline_evaluation":
 #         print(f"🧠 Loading baseline UNet with features {cfg['train']['model']['features']}")
-#         model = UNet(
-#             in_ch=in_ch,
-#             out_ch=out_ch,
-#             enc_features=cfg["train"]["model"]["features"]
-#         ).to(device)
+#         model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=cfg["train"]["model"]["features"]).to(device)
 #         model_ckpt = paths.base_dir / "baseline" / "training" / "final_model.pth"
 
 #     elif phase == "pruned_evaluation":
 #         meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
 #         if not meta_path.exists():
 #             raise FileNotFoundError(f"❌ Metadata file missing: {meta_path}")
-
 #         with open(meta_path, "r") as f:
 #             meta = json.load(f)
 #         enc_features, dec_features, bottleneck_out = (
@@ -93,7 +98,6 @@
 #         meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
 #         if not meta_path.exists():
 #             raise FileNotFoundError(f"❌ Metadata file missing: {meta_path}")
-
 #         with open(meta_path, "r") as f:
 #             meta = json.load(f)
 #         enc_features, dec_features, bottleneck_out = (
@@ -181,6 +185,7 @@
 
 #             if i in visual_indices:
 #                 save_visual(imgs[0], masks[0], preds[0], vis_dir, i)
+#                 wandb.log({"sample_prediction": wandb.Image(os.path.join(vis_dir, f"sample_{i}.png"))})
 
 #     # ============================================================
 #     # --- METRICS OUTPUT ---
@@ -210,8 +215,20 @@
 #     metrics_path = os.path.join(save_dir, "eval_metrics.json")
 #     with open(metrics_path, "w") as f:
 #         json.dump(metrics, f, indent=4)
-#     # print(f"💾 Metrics saved to {metrics_path}")
-#     # print(f"🖼️ Sample visualizations saved to {vis_dir}")
+
+#     # ✅ Log metrics to W&B
+#     wandb.log({
+#         "mean_dice": avg_dice,
+#         "mean_iou": avg_iou,
+#         **{f"dice_{name}": d for name, d in zip(class_names, avg_class_dice)},
+#         **{f"iou_{name}": i for name, i in zip(class_names, avg_class_iou)},
+#     })
+
+#     wandb.save(metrics_path)
+#     wandb.finish()
+
+#     print(f"💾 Metrics saved to {metrics_path}")
+#     print(f"🖼️ Visualizations saved to {vis_dir}")
 
 
 # # ------------------------------------------------------------
@@ -233,13 +250,14 @@
 #     for a in axs:
 #         a.axis("off")
 #     plt.tight_layout()
-#     plt.savefig(os.path.join(save_dir, f"sample_{idx}.png"))
+#     path = os.path.join(save_dir, f"sample_{idx}.png")
+#     plt.savefig(path)
 #     plt.close(fig)
+#     return path
 
 
 # if __name__ == "__main__":
 #     evaluate(debug=True)
-
 
 
 import os
@@ -250,14 +268,16 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import wandb  # ✅ added
+import wandb  
 
+# --- Project imports ---
 from src.models.unet import UNet
 from src.training.data_loader import SegmentationDataset
 from src.training.metrics import dice_score, iou_score
 from src.pruning.rebuild import build_pruned_unet, plot_unet_schematic
 from src.utils.config import load_config
 from src.utils.paths import get_paths
+from src.utils.wandb_utils import setup_wandb
 
 
 # ------------------------------------------------------------
@@ -288,14 +308,7 @@ def evaluate(cfg=None, debug=False):
     # ============================================================
     # --- WANDB INITIALIZATION ---
     # ============================================================
-    wandb.init(
-        project="unet-pruning",
-        group=exp_cfg["experiment_name"],
-        job_type=phase,
-        name=f"{exp_cfg['experiment_name']}_{phase}",
-        config=cfg,
-        dir=str(paths.base_dir),
-    )
+    run = setup_wandb(cfg, job_type="evaluation")
 
     # ============================================================
     # --- CONFIG PARAMETERS ---
@@ -427,8 +440,8 @@ def evaluate(cfg=None, debug=False):
             num_samples += 1
 
             if i in visual_indices:
-                save_visual(imgs[0], masks[0], preds[0], vis_dir, i)
-                wandb.log({"sample_prediction": wandb.Image(os.path.join(vis_dir, f"sample_{i}.png"))})
+                img_path = save_visual(imgs[0], masks[0], preds[0], vis_dir, i)
+                wandb.log({"sample_prediction": wandb.Image(img_path)})
 
     # ============================================================
     # --- METRICS OUTPUT ---
@@ -466,12 +479,12 @@ def evaluate(cfg=None, debug=False):
         **{f"dice_{name}": d for name, d in zip(class_names, avg_class_dice)},
         **{f"iou_{name}": i for name, i in zip(class_names, avg_class_iou)},
     })
-
     wandb.save(metrics_path)
-    wandb.finish()
 
     print(f"💾 Metrics saved to {metrics_path}")
     print(f"🖼️ Visualizations saved to {vis_dir}")
+
+    run.finish()
 
 
 # ------------------------------------------------------------

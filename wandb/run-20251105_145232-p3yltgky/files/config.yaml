@@ -1,0 +1,115 @@
+_wandb:
+    value:
+        cli_version: 0.22.3
+        e:
+            n8lc89w9pw402609rn7up2gyh7pku6yo:
+                cpu_count: 12
+                cpu_count_logical: 24
+                cudaVersion: "12.4"
+                disk:
+                    /:
+                        total: "500860739584"
+                        used: "315757735936"
+                email: tijmen.toxo@gmail.com
+                executable: /media/ttoxopeus/miniconda3/envs/nnunet/bin/python
+                git:
+                    commit: d258a3709576e8b816ce9521daa4cf2e5cafa7ec
+                    remote: https://github.com/TijmenToxopeus/basic_UNet.git
+                gpu: NVIDIA GeForce RTX 4090
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 16384
+                      memoryTotal: "25757220864"
+                      name: NVIDIA GeForce RTX 4090
+                      uuid: GPU-f07e040f-65e6-f35b-338c-d0571425c3d7
+                host: tud1006785
+                memory:
+                    total: "66527023104"
+                os: Linux-6.8.0-52-generic-x86_64-with-glibc2.35
+                program: -m src.pipeline.pruned
+                python: CPython 3.10.18
+                root: /media/ttoxopeus/basic_UNet
+                startedAt: "2025-11-05T13:52:32.857019Z"
+                writerId: n8lc89w9pw402609rn7up2gyh7pku6yo
+        m: []
+        python_version: 3.10.18
+        t:
+            "1":
+                - 1
+                - 41
+            "2":
+                - 1
+                - 41
+            "3":
+                - 2
+                - 3
+                - 13
+                - 15
+                - 16
+            "4": 3.10.18
+            "5": 0.22.3
+            "10":
+                - 20
+            "12": 0.22.3
+            "13": linux-x86_64
+evaluation:
+    value:
+        batch_size: 1
+        num_slices_per_volume: null
+        num_visuals: 3
+        paths:
+            eval_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
+            label_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
+            save_root: results
+        phase: baseline_evaluation
+experiment:
+    value:
+        device: cuda
+        experiment_name: exp13_wandb
+        model_name: UNet_ACDC
+        seed: 42
+pruning:
+    value:
+        ckpt_path:
+            ckpt_name: final_model.pth
+            subfolder: baseline
+        method: l1_norm
+        ratios:
+            block_ratios:
+                bottleneck: 0.3
+                decoders.1: 0.3
+                decoders.3: 0.3
+                decoders.5: 0.2
+                decoders.7: 0.1
+                encoders.0: 0
+                encoders.1: 0.1
+                encoders.2: 0.2
+                encoders.3: 0.3
+            default: 0.25
+        save_path:
+            filename: pruned_model.pth
+            subfolder: pruned
+train:
+    value:
+        batch_size: 8
+        model:
+            features:
+                - 64
+                - 128
+                - 256
+                - 512
+            in_channels: 1
+            out_channels: 4
+        num_slices_per_volume: null
+        parameters:
+            learning_rate: "1e-4"
+            loss_function: ce
+            num_epochs: 10
+            save_interval: 15
+        paths:
+            label_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr
+            save_root: results
+            train_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
+        phase: training
+        val_ratio: 0.2

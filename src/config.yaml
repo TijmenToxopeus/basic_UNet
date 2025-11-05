@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp12_wandb"
+  experiment_name: "exp13_wandb"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -19,11 +19,11 @@ train:
   model:
     in_channels: 1
     out_channels: 4
-    features: [64, 128, 256, 512, 1024]
+    features: [64, 128, 256, 512]
   parameters:
     learning_rate: 1e-4
     num_epochs: 10
-    save_interval: 20
+    save_interval: 15
     loss_function: "ce"
   paths:
     train_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
@@ -62,10 +62,8 @@ pruning:
       encoders.1: 0.1
       encoders.2: 0.2
       encoders.3: 0.3
-      encoders.4: 0.3
       bottleneck: 0.3
       decoders.1: 0.3
       decoders.3: 0.3
       decoders.5: 0.2
       decoders.7: 0.1
-      decoders.9: 0.

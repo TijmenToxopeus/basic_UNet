@@ -1,0 +1,38 @@
+{
+  "os":  "Linux-6.8.0-52-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.10.18",
+  "startedAt":  "2025-11-05T13:52:32.857019Z",
+  "program":  "-m src.pipeline.pruned",
+  "git":  {
+    "remote":  "https://github.com/TijmenToxopeus/basic_UNet.git",
+    "commit":  "d258a3709576e8b816ce9521daa4cf2e5cafa7ec"
+  },
+  "email":  "tijmen.toxo@gmail.com",
+  "root":  "/media/ttoxopeus/basic_UNet",
+  "host":  "tud1006785",
+  "executable":  "/media/ttoxopeus/miniconda3/envs/nnunet/bin/python",
+  "cpu_count":  12,
+  "cpu_count_logical":  24,
+  "gpu":  "NVIDIA GeForce RTX 4090",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "500860739584",
+      "used":  "315757735936"
+    }
+  },
+  "memory":  {
+    "total":  "66527023104"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA GeForce RTX 4090",
+      "memoryTotal":  "25757220864",
+      "cudaCores":  16384,
+      "architecture":  "Ada",
+      "uuid":  "GPU-f07e040f-65e6-f35b-338c-d0571425c3d7"
+    }
+  ],
+  "cudaVersion":  "12.4",
+  "writerId":  "n8lc89w9pw402609rn7up2gyh7pku6yo"
+}
