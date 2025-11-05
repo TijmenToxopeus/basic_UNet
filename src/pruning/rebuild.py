@@ -68,9 +68,9 @@ def get_pruned_feature_sizes(model, masks):
             out_ch = model.decoders[i].net[3].out_channels
         dec_features.append(out_ch)
 
-    print(f"Encoder features: {enc_features}")
-    print(f"Bottleneck out_channels: {bottleneck_out}")
-    print(f"Decoder features: {dec_features}")
+    # print(f"Encoder features: {enc_features}")
+    # print(f"Bottleneck out_channels: {bottleneck_out}")
+    # print(f"Decoder features: {dec_features}")
 
     return enc_features, bottleneck_out, dec_features
 
@@ -166,7 +166,7 @@ def copy_pruned_weights(original, pruned, masks, verbose=True):
                 print(f"⚠️  Bias shape mismatch in {name}: skipping bias copy.")
 
         if verbose:
-            print(f"✅ Copied weights for {name} | shape: {w_new.shape}")
+            print(f"Copied weights for {name} | shape: {w_new.shape}")
 
     # print("🔧 Weight copying completed.")
     return pruned
@@ -249,9 +249,6 @@ def rebuild_pruned_unet(model, masks, save_path=None):
     print("🔧 Rebuilding pruned UNet architecture...")
 
     enc_features, bottleneck_out, dec_features = get_pruned_feature_sizes(model, masks)
-    print(f"Encoder features: {enc_features}")
-    print(f"Bottleneck out_channels: {bottleneck_out}")
-    print(f"Decoder features: {dec_features}")
 
     pruned_model = build_pruned_unet(model, enc_features, dec_features=dec_features, bottleneck_out=bottleneck_out)
     pruned_model = copy_pruned_weights(model, pruned_model, masks)
@@ -274,7 +271,7 @@ def rebuild_pruned_unet(model, masks, save_path=None):
         meta_path = save_path.with_name(save_path.stem + "_meta.json")
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=4)
-        print(f"🧾 Saved metadata to {meta_path}")
+        #print(f"🧾 Saved metadata to {meta_path}")
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model

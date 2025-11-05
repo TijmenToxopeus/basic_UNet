@@ -1,65 +1,9 @@
-# evaluation:
-#   batch_size: 1
-#   num_slices_per_volume: null
-#   num_visuals: 3
-#   paths:
-#     eval_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
-#     label_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
-#     save_root: results
-#   phase: retrained_pruned_evaluation
-# experiment:
-#   device: cuda
-#   experiment_name: exp6
-#   model_name: UNet_ACDC
-#   seed: 42
-# pruning:
-#   ckpt_path:
-#     ckpt_name: final_model.pth
-#     subfolder: baseline
-#   method: l1_norm
-#   ratios:
-#     block_ratios:
-#       bottleneck: 0.3
-#       decoders.0: 0.1
-#       decoders.1: 0.2
-#       decoders.2: 0.3
-#       encoders.0: 0.0
-#       encoders.1: 0.0
-#       encoders.2: 0.1
-#     default: 0.25
-#   save_path:
-#     filename: pruned_model.pth
-#     subfolder: pruned
-# train:
-#   batch_size: 8
-#   model:
-#     features:
-#     - 64
-#     - 128
-#     - 256
-#     in_channels: 1
-#     out_channels: 4
-#   num_slices_per_volume: null
-#   parameters:
-#     learning_rate: 1e-4
-#     loss_function: ce
-#     num_epochs: 5
-#     save_interval: 10
-#   paths:
-#     label_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr
-#     save_root: results
-#     subfolder: baseline
-#     train_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
-#   phase: retraining
-#   val_ratio: 0.2
-
-
 # ===============================================================
 # Configuration for L1-norm Pruning of UNet on ACDC Dataset
 # ===============================================================
 
 experiment:
-  experiment_name: "exp7"
+  experiment_name: "exp12_wandb"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -68,30 +12,30 @@ experiment:
 # TRAINING CONFIGURATION
 # ---------------------------------------------------------------
 train:
-  phase: "retraining"               # "training" or "retraining"
+  phase: "training"               # "training" or "retraining"
   val_ratio: 0.2
   batch_size: 8
   num_slices_per_volume: null
   model:
     in_channels: 1
     out_channels: 4
-    features: [64, 128, 256]
+    features: [64, 128, 256, 512, 1024]
   parameters:
     learning_rate: 1e-4
-    num_epochs: 5
-    save_interval: 10
+    num_epochs: 10
+    save_interval: 20
     loss_function: "ce"
   paths:
     train_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
     label_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
     save_root: "results"
-    subfolder: "pruned"           # "baseline" or "pruned"
+    #subfolder: "pruned"           # "baseline" or "pruned"
 
 # ---------------------------------------------------------------
 # EVALUATION CONFIGURATION
 # ---------------------------------------------------------------
 evaluation:
-  phase: "retrained_pruned_evaluation"        # "baseline_evaluation", "pruned_evaluation", "retrained_pruned_evaluation"
+  phase: "baseline_evaluation"        # "baseline_evaluation", "pruned_evaluation", "retrained_pruned_evaluation"
   batch_size: 1
   num_slices_per_volume: null
   num_visuals: 3
@@ -106,20 +50,22 @@ evaluation:
 pruning:
   method: "l1_norm"
   ckpt_path:
-    root: "results"
     subfolder: "baseline"           # where baseline model is stored
     ckpt_name: "final_model.pth"
   save_path:
-    root: "results"
     subfolder: "pruned"             # where to save pruned results
     filename: "pruned_model.pth"
   ratios:
     default: 0.25
     block_ratios:
       encoders.0: 0.0
-      encoders.1: 0.0
-      encoders.2: 0.1
+      encoders.1: 0.1
+      encoders.2: 0.2
+      encoders.3: 0.3
+      encoders.4: 0.3
       bottleneck: 0.3
-      decoders.2: 0.3
-      decoders.1: 0.2
-      decoders.0: 0.1
+      decoders.1: 0.3
+      decoders.3: 0.3
+      decoders.5: 0.2
+      decoders.7: 0.1
+      decoders.9: 0.

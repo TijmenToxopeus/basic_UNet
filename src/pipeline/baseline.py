@@ -83,8 +83,6 @@ def run_baseline_pipeline():
     # ------------------------------------------------------------
     # 2️⃣ Evaluate baseline model
     # ------------------------------------------------------------
-    print("\n🔍 Evaluating baseline model...\n")
-
     baseline_cfg["evaluation"]["phase"] = "baseline_evaluation"
 
     # run evaluation directly with config dict

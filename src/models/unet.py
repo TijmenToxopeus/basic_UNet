@@ -82,17 +82,17 @@ class UNet(nn.Module):
         self.final_conv = nn.Conv2d(dec_features[-1], out_ch, kernel_size=1)
         self.pool = nn.MaxPool2d(2)
 
-        # ---------- Channel summary (for debugging / verification) ----------
-        print("\n🧩 U-Net Architecture Summary:")
-        print(f"Input channels:  {in_ch}")
-        for i, feat in enumerate(enc_features):
-            print(f"Encoder {i+1:<2}: in={in_ch if i==0 else enc_features[i-1]:<4} → out={feat}")
-        print(f"Bottleneck : in={enc_features[-1]:<4} → out={bottleneck_out}")
-        for i, feat in enumerate(dec_features):
-            skip_ch = enc_features[-(i + 1)]
-            up_ch = bottleneck_out if i == 0 else dec_features[i - 1]
-            print(f"Decoder {i+1:<2}: skip={skip_ch:<4} + up={up_ch:<4} → out={feat}")
-        print(f"Output conv: {dec_features[-1]} → {out_ch}\n")
+        # # ---------- Channel summary (for debugging / verification) ----------
+        # print("\n🧩 U-Net Architecture Summary:")
+        # print(f"Input channels:  {in_ch}")
+        # for i, feat in enumerate(enc_features):
+        #     print(f"Encoder {i+1:<2}: in={in_ch if i==0 else enc_features[i-1]:<4} → out={feat}")
+        # print(f"Bottleneck : in={enc_features[-1]:<4} → out={bottleneck_out}")
+        # for i, feat in enumerate(dec_features):
+        #     skip_ch = enc_features[-(i + 1)]
+        #     up_ch = bottleneck_out if i == 0 else dec_features[i - 1]
+        #     print(f"Decoder {i+1:<2}: skip={skip_ch:<4} + up={up_ch:<4} → out={feat}")
+        # print(f"Output conv: {dec_features[-1]} → {out_ch}\n")
 
 
 

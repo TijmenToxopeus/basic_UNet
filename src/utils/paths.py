@@ -268,18 +268,18 @@ class ExperimentPaths:
         config_dst = self.base_dir / "config.yaml"
         if not config_dst.exists():
             shutil.copy2(self.config_file_path, config_dst)
-            print(f"💾 Saved config snapshot to {config_dst}")
+            #print(f"💾 Saved config snapshot to {config_dst}")
 
     # ------------------------------------------------------------
-    def __repr__(self):
-        return (
-            f"Experiment: {self.exp_name} ({self.model_name})\n"
-            f"  🧠 Baseline checkpoint: {self.baseline_ckpt}\n"
-            f"  ✂️  Pruned model: {self.pruned_model}\n"
-            f"  💾 Training dir: {self.train_save_dir}\n"
-            f"  🔍 Eval dir: {self.eval_save_dir}\n"
-            f"  📂 Logs dir: {self.logs_dir}\n"
-        )
+    # def __repr__(self):
+    #     return (
+    #         f"Experiment: {self.exp_name} ({self.model_name})\n"
+    #         f"  🧠 Baseline checkpoint: {self.baseline_ckpt}\n"
+    #         f"  ✂️  Pruned model: {self.pruned_model}\n"
+    #         f"  💾 Training dir: {self.train_save_dir}\n"
+    #         f"  🔍 Eval dir: {self.eval_save_dir}\n"
+    #         f"  📂 Logs dir: {self.logs_dir}\n"
+    #     )
 
 
 # ------------------------------------------------------------
