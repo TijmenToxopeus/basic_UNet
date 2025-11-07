@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp14_wandb"
+  experiment_name: "exp15_torchio"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"

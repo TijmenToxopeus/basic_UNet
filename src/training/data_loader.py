@@ -2,11 +2,29 @@ import os
 import torch
 import numpy as np
 import nibabel as nib
+import torchio as tio
 from torch.utils.data import Dataset, DataLoader, random_split
 import torchvision.transforms.functional as TF
 import random
 
 
+# ============================================================
+# --- TorchIO Augmentation Pipeline ---
+# ============================================================
+def get_torchio_augmentation_pipeline():
+    """Return a TorchIO augmentation pipeline for MRI-like images."""
+    return tio.Compose([
+        tio.RandomAffine(scales=(0.9, 1.1), degrees=10,              # rotation/scaling
+                         translation=5, p=0.5),
+        tio.RandomNoise(mean=0, std=(0, 0.05), p=0.25),              # Gaussian noise
+        tio.RandomBiasField(coefficients=0.3, p=0.3),                 # MRI intensity bias
+        tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.3),                # gamma correction
+    ])
+
+
+# ============================================================
+# --- Dataset Class ---
+# ============================================================
 class SegmentationDataset(Dataset):
     """
     Dataset loader for 2D slices from ACDC.
@@ -42,17 +60,15 @@ class SegmentationDataset(Dataset):
         # Optional cache for faster loading
         self.cache = {} if self.use_cache else None
 
-        # Build (img_path, lbl_path, slice_index) list for central slices
+        # Preload slice indices
         self.samples = []
         for img_path, lbl_path in zip(self.img_paths, self.lbl_paths):
             img_nii = nib.load(img_path)
             num_slices = img_nii.shape[self.slice_axis]
 
             if num_slices_per_volume is None or num_slices <= num_slices_per_volume:
-                # Use all slices if None or fewer than limit
                 slice_indices = list(range(num_slices))
             else:
-                # Use only central subset
                 center = num_slices // 2
                 half = num_slices_per_volume // 2
                 start = max(center - half, 0)
@@ -61,6 +77,9 @@ class SegmentationDataset(Dataset):
 
             for s in slice_indices:
                 self.samples.append((img_path, lbl_path, s))
+
+        # Initialize TorchIO augmentation pipeline if requested
+        self.torchio_transform = get_torchio_augmentation_pipeline() if augment else None
 
     def __len__(self):
         return len(self.samples)
@@ -90,37 +109,34 @@ class SegmentationDataset(Dataset):
             img = np.clip(img, np.percentile(img, 1), np.percentile(img, 99))
             img = (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
 
-        # To tensors
-        img = torch.from_numpy(img).float().unsqueeze(0)  # [1,H,W]
-        lbl = torch.from_numpy(lbl).long()                # [H,W]
+        # Convert to torch tensors
+        img = torch.from_numpy(img).float().unsqueeze(0)  # [1, H, W]
+        lbl = torch.from_numpy(lbl).long()                # [H, W]
 
-        # Resize
+        # Resize both
         img = TF.resize(img, self.target_size, antialias=True)
-        lbl = TF.resize(lbl.unsqueeze(0).float(), self.target_size,
-                        interpolation=TF.InterpolationMode.NEAREST).squeeze(0).long()
+        lbl = TF.resize(
+            lbl.unsqueeze(0).float(),
+            self.target_size,
+            interpolation=TF.InterpolationMode.NEAREST
+        ).squeeze(0).long()
 
-        # ---------- Augmentations ----------
-        if self.augment:
-            # Random rotation (±15°)
-            if random.random() < 0.5:
-                angle = random.uniform(-15, 15)
-                img = TF.rotate(img, angle)
-                lbl = TF.rotate(lbl.unsqueeze(0).float(), angle,
-                                interpolation=TF.InterpolationMode.NEAREST).squeeze(0).long()
-
-            # # Random horizontal flip
-            # if random.random() < 0.5:
-            #     img = torch.flip(img, dims=[2])
-            #     lbl = torch.flip(lbl, dims=[1])
-
-            # # Random vertical flip
-            # if random.random() < 0.5:
-            #     img = torch.flip(img, dims=[1])
-            #     lbl = torch.flip(lbl, dims=[0])
+        # ---------- TorchIO Augmentations ----------
+        if self.torchio_transform is not None:
+            subject = tio.Subject(
+                image=tio.ScalarImage(tensor=img.unsqueeze(0)),  # add batch dim
+                label=tio.LabelMap(tensor=lbl.unsqueeze(0))
+            )
+            transformed = self.torchio_transform(subject)
+            img = transformed.image.data.squeeze(0)
+            lbl = transformed.label.data.squeeze(0).long()
 
         return img, lbl
 
 
+# ============================================================
+# --- DataLoader Builder ---
+# ============================================================
 def get_train_val_loaders(
     img_dir,
     lbl_dir,
@@ -134,18 +150,19 @@ def get_train_val_loaders(
     Returns train and validation DataLoaders.
     """
     dataset = SegmentationDataset(
-        img_dir, lbl_dir,
+        img_dir,
+        lbl_dir,
         augment=True,
         num_slices_per_volume=num_slices_per_volume
     )
-
 
     val_size = int(len(dataset) * val_ratio)
     train_size = len(dataset) - val_size
     generator = torch.Generator().manual_seed(seed)
 
     train_ds, val_ds = random_split(dataset, [train_size, val_size], generator=generator)
-    val_ds.dataset.augment = False  # disable augmentation for val
+    val_ds.dataset.augment = False
+    val_ds.dataset.torchio_transform = None  # disable augmentations for val
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
@@ -153,6 +170,9 @@ def get_train_val_loaders(
     return train_loader, val_loader
 
 
+# ============================================================
+# --- Debug / Quick Test ---
+# ============================================================
 if __name__ == "__main__":
     img_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
     lbl_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
