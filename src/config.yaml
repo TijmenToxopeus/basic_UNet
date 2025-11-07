@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp13_wandb"
+  experiment_name: "exp14_wandb"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -22,7 +22,7 @@ train:
     features: [64, 128, 256, 512]
   parameters:
     learning_rate: 1e-4
-    num_epochs: 10
+    num_epochs: 5
     save_interval: 15
     loss_function: "ce"
   paths:
