@@ -208,23 +208,51 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-def plot_l1_histograms(norms: dict, save_dir=None, logx=True, bins=40):
+def plot_l1_histograms(norms: dict, save_dir=None, bins=40, logx=False):
     """
-    Plot per-layer L1 magnitude histograms.
+    Plot per-layer L1 magnitude histograms with summary statistics.
     """
-    os.makedirs(save_dir, exist_ok=True) if save_dir else None
     for name, vals in norms.items():
-        plt.figure(figsize=(5,3))
-        sns.histplot(vals.cpu().numpy(), bins=bins, color='steelblue', kde=False)
+        vals = vals.cpu().numpy()
+        mean = np.mean(vals)
+        median = np.median(vals)
+        p25, p75 = np.percentile(vals, [25, 75])
+        std = np.std(vals)
+        minv, maxv = np.min(vals), np.max(vals)
+
+        plt.figure(figsize=(6,3))
+        sns.histplot(vals, bins=bins, color='steelblue', alpha=0.7, edgecolor='black')
         if logx:
-            plt.xscale('linear')
+            plt.xscale('log')
+        
+        # --- Vertical lines for key stats ---
+        plt.axvline(mean, color='red', linestyle='--', linewidth=1, label=f"Mean = {mean:.2f}")
+        plt.axvline(median, color='orange', linestyle='-', linewidth=1.2, label=f"Median = {median:.2f}")
+        plt.axvline(p25, color='gray', linestyle=':', linewidth=1)
+        plt.axvline(p75, color='gray', linestyle=':', linewidth=1)
+
+        # --- Annotate stats box ---
+        textstr = (
+            f"min = {minv:.2f}\n"
+            f"max = {maxv:.2f}\n"
+        )
+        plt.gca().text(
+            0.98, 0.95, textstr, transform=plt.gca().transAxes,
+            fontsize=8, verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.6)
+        )
+
         plt.title(name)
         plt.xlabel("Per-filter L1 norm")
         plt.ylabel("Count")
+        plt.legend(fontsize=8)
+        plt.tight_layout()
 
         if save_dir:
-            plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, f"{name.replace('.', '_')}_hist.png"))
+            import os
+            os.makedirs(save_dir, exist_ok=True)
+            path = os.path.join(save_dir, f"{name.replace('.', '_')}_hist.png")
+            plt.savefig(path, dpi=150)
             plt.close()
         else:
             plt.show()

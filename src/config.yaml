@@ -22,8 +22,8 @@ train:
     features: [64, 128, 256, 512, 1024, 2048]
   parameters:
     learning_rate: 1e-4
-    num_epochs: 25
-    save_interval: 20
+    num_epochs: 10
+    save_interval: 10
     loss_function: "ce"
   paths:
     train_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
@@ -57,16 +57,16 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.0
-      encoders.1: 0.1
-      encoders.2: 0.1
-      encoders.3: 0.2
-      encoders.4: 0.2
+      encoders.0: 0.15
+      encoders.1: 0.15
+      encoders.2: 0.25
+      encoders.3: 0.25
+      encoders.4: 0.3
       encoders.5: 0.3
-      bottleneck: 0.4
-      decoders.1: 0.0
-      decoders.3: 0.0
-      decoders.5: 0.0
-      decoders.7: 0.0
-      decoders.9: 0.0
-      decoders.11: 0.0
+      bottleneck: 0.1
+      decoders.1: 0.1
+      decoders.3: 0.15
+      decoders.5: 0.2
+      decoders.7: 0.25
+      decoders.9: 0.05
+      decoders.11: 0.1
