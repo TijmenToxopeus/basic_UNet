@@ -12,7 +12,7 @@ import wandb
 from src.models.unet import UNet
 from src.training.loss import get_loss_function
 from src.training.metrics import dice_score, iou_score
-from src.training.data_loader import get_train_val_loaders
+from src.training.data_loader import get_train_val_loaders, summarize_torchio_pipeline
 from src.pruning.rebuild import build_pruned_unet
 from src.utils.config import load_config
 from src.utils.paths import get_paths
@@ -101,7 +101,7 @@ def train_model(cfg=None):
     paths.ensure_dir(save_dir)
     print(f"📂 Saving training outputs to: {save_dir}")
 
-    train_loader, val_loader = get_train_val_loaders(
+    train_loader, val_loader, augmentation_summary = get_train_val_loaders(
         img_dir=paths.train_dir,
         lbl_dir=paths.label_dir,
         batch_size=batch_size,
@@ -109,11 +109,12 @@ def train_model(cfg=None):
         shuffle=True,
         num_slices_per_volume=num_slices_per_volume
     )
+
     print(f"✅ Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
     criterion = get_loss_function(loss_fn_name)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=3)
 
     metrics_log = {"epoch": [], "train_loss": [], "val_dice": [], "val_iou": [], "lr": []}
 
@@ -217,6 +218,10 @@ def train_model(cfg=None):
         "final_train_loss": float(metrics_log["train_loss"][-1]),
         "final_val_dice": float(metrics_log["val_dice"][-1]),
         "final_val_iou": float(metrics_log["val_iou"][-1]),
+        "augmentation": {
+            "library": "torchio",
+            "transforms": augmentation_summary if augmentation_summary else "none"
+        }
     }
     with open(os.path.join(save_dir, "train_summary.json"), "w") as f:
         json.dump(summary, f, indent=4)

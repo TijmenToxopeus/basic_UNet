@@ -140,7 +140,7 @@ def model_to_dataframe_with_l1(
     l1_stats: dict,
     block_ratios: dict = None,
     post_prune_ratios: dict = None,
-    remove_nan_layers: bool = False
+    remove_nan_layers: bool = True
 ) -> pd.DataFrame:
     """
     Build a DataFrame summarizing all convolutional layers in a UNet-like model.
@@ -199,3 +199,67 @@ def model_to_dataframe_with_l1(
             df_sorted.loc[df_sorted["Layer"] == layer_name, "Post-Prune Ratio"] = ratio
 
     return df_sorted
+
+
+# -----------------------------------------------------------------------------
+# 6️⃣ Visualization utilities for L1 distributions
+# -----------------------------------------------------------------------------
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
+def plot_l1_histograms(norms: dict, save_dir=None, logx=True, bins=40):
+    """
+    Plot per-layer L1 magnitude histograms.
+    """
+    os.makedirs(save_dir, exist_ok=True) if save_dir else None
+    for name, vals in norms.items():
+        plt.figure(figsize=(5,3))
+        sns.histplot(vals.cpu().numpy(), bins=bins, color='steelblue', kde=False)
+        if logx:
+            plt.xscale('linear')
+        plt.title(name)
+        plt.xlabel("Per-filter L1 norm")
+        plt.ylabel("Count")
+
+        if save_dir:
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f"{name.replace('.', '_')}_hist.png"))
+            plt.close()
+        else:
+            plt.show()
+
+
+def plot_l1_summary(df: pd.DataFrame, save_path=None):
+    """
+    Plot global layer-wise L1 mean and spread (e.g., barplot or boxplot).
+    """
+    plt.figure(figsize=(10,4))
+    sns.barplot(data=df, x="Layer", y="Mean L1")
+    plt.xticks(rotation=90, fontsize=6)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
+
+
+def inspect_model_l1(model, save_dir=None):
+    """
+    Compute, summarize, and visualize L1 distributions for a model.
+    """
+    norms = compute_l1_norms(model)
+    stats = compute_l1_stats(norms)
+    df = model_to_dataframe_with_l1(model, stats)
+
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        df.to_csv(os.path.join(save_dir, "l1_summary.csv"), index=False)
+        plot_l1_histograms(norms, save_dir=save_dir)
+        plot_l1_summary(df, save_path=os.path.join(save_dir, "l1_means.png"))
+    else:
+        plot_l1_histograms(norms)
+        plot_l1_summary(df)
+
+    return df

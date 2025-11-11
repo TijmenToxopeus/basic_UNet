@@ -14,12 +14,20 @@ import random
 def get_torchio_augmentation_pipeline():
     """Return a TorchIO augmentation pipeline for MRI-like images."""
     return tio.Compose([
+        tio.RandomElasticDeformation(num_control_points=7, max_displacement=3, p=0.3),  # elastic deformation
         tio.RandomAffine(scales=(0.9, 1.1), degrees=10,              # rotation/scaling
                          translation=5, p=0.5),
         tio.RandomNoise(mean=0, std=(0, 0.05), p=0.25),              # Gaussian noise
         tio.RandomBiasField(coefficients=0.3, p=0.3),                 # MRI intensity bias
         tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.3),                # gamma correction
     ])
+
+def summarize_torchio_pipeline(pipeline):
+    summary = []
+    for transform in pipeline.transforms:
+        params = {k: v for k, v in vars(transform).items() if not k.startswith('_')}
+        summary.append({"name": transform.__class__.__name__, **params})
+    return summary
 
 
 # ============================================================
@@ -122,14 +130,23 @@ class SegmentationDataset(Dataset):
         ).squeeze(0).long()
 
         # ---------- TorchIO Augmentations ----------
+        # if self.torchio_transform is not None:
+        #     subject = tio.Subject(
+        #         image=tio.ScalarImage(tensor=img.unsqueeze(0)),  # add batch dim
+        #         label=tio.LabelMap(tensor=lbl.unsqueeze(0))
+        #     )
+        #     transformed = self.torchio_transform(subject)
+        #     img = transformed.image.data.squeeze(0)
+        #     lbl = transformed.label.data.squeeze(0).long()
         if self.torchio_transform is not None:
             subject = tio.Subject(
-                image=tio.ScalarImage(tensor=img.unsqueeze(0)),  # add batch dim
-                label=tio.LabelMap(tensor=lbl.unsqueeze(0))
+                image=tio.ScalarImage(tensor=img.unsqueeze(0)),               # [1, 1, H, W]
+                label=tio.LabelMap(tensor=lbl.unsqueeze(0).unsqueeze(0))      # [1, 1, H, W]
             )
             transformed = self.torchio_transform(subject)
-            img = transformed.image.data.squeeze(0)
-            lbl = transformed.label.data.squeeze(0).long()
+            img = transformed.image.data.squeeze(0)                           # → [1, H, W]
+            lbl = transformed.label.data.squeeze().long()                     # → [H, W]
+
 
         return img, lbl
 
@@ -148,26 +165,83 @@ def get_train_val_loaders(
 ):
     """
     Returns train and validation DataLoaders.
+    Uses two separate dataset instances so that:
+      - training data has augmentations,
+      - validation data does not.
+    Also returns an augmentation summary for logging.
     """
-    dataset = SegmentationDataset(
+
+    # --- Create two *independent* datasets ---
+    train_dataset = SegmentationDataset(
         img_dir,
         lbl_dir,
         augment=True,
         num_slices_per_volume=num_slices_per_volume
     )
+    val_dataset = SegmentationDataset(
+        img_dir,
+        lbl_dir,
+        augment=False,  # explicitly disable augmentations
+        num_slices_per_volume=num_slices_per_volume
+    )
 
-    val_size = int(len(dataset) * val_ratio)
-    train_size = len(dataset) - val_size
+    # --- Split indices reproducibly ---
+    val_size = int(len(train_dataset) * val_ratio)
+    train_size = len(train_dataset) - val_size
     generator = torch.Generator().manual_seed(seed)
 
-    train_ds, val_ds = random_split(dataset, [train_size, val_size], generator=generator)
-    val_ds.dataset.augment = False
-    val_ds.dataset.torchio_transform = None  # disable augmentations for val
+    train_subset, _ = random_split(train_dataset, [train_size, val_size], generator=generator)
+    _, val_subset = random_split(val_dataset, [train_size, val_size], generator=generator)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+    # --- Build DataLoaders ---
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=shuffle)
+    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, val_loader
+    # --- Summarize augmentation pipeline (for logging) ---
+    augmentation_summary = None
+    if hasattr(train_dataset, "torchio_transform") and train_dataset.torchio_transform is not None:
+        augmentation_summary = summarize_torchio_pipeline(train_dataset.torchio_transform)
+
+    return train_loader, val_loader, augmentation_summary
+
+
+
+# def get_train_val_loaders(
+#     img_dir,
+#     lbl_dir,
+#     batch_size=2,
+#     val_ratio=0.2,
+#     shuffle=True,
+#     seed=42,
+#     num_slices_per_volume=20
+# ):
+#     """
+#     Returns train and validation DataLoaders.
+#     """
+#     dataset = SegmentationDataset(
+#         img_dir,
+#         lbl_dir,
+#         augment=True,
+#         num_slices_per_volume=num_slices_per_volume
+#     )
+
+#     val_size = int(len(dataset) * val_ratio)
+#     train_size = len(dataset) - val_size
+#     generator = torch.Generator().manual_seed(seed)
+
+#     train_ds, val_ds = random_split(dataset, [train_size, val_size], generator=generator)
+#     val_ds.dataset.augment = False
+#     val_ds.dataset.torchio_transform = None  # disable augmentations for val
+
+#     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
+#     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+
+#         # --- Summarize augmentation pipeline (for logging) ---
+#     augmentation_summary = None
+#     if hasattr(dataset, "torchio_transform") and dataset.torchio_transform is not None:
+#         augmentation_summary = summarize_torchio_pipeline(dataset.torchio_transform)
+
+#     return train_loader, val_loader, augmentation_summary
 
 
 # ============================================================

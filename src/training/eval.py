@@ -145,6 +145,92 @@ def evaluate(cfg=None, debug=False):
         except Exception as e:
             print(f"(⚠️ Could not plot schematic: {e})")
 
+    # # ============================================================
+    # # --- METRIC INITIALIZATION ---
+    # # ============================================================
+    # num_classes = out_ch
+    # class_dice = [0.0] * num_classes
+    # class_iou = [0.0] * num_classes
+    # total_dice, total_iou = 0.0, 0.0
+    # total_dice_fg, total_iou_fg = 0.0, 0.0
+    # num_samples = 0
+
+    # vis_dir = os.path.join(save_dir, "predictions")
+    # os.makedirs(vis_dir, exist_ok=True)
+
+    # # ============================================================
+    # # --- EVALUATION LOOP ---
+    # # ============================================================
+    # print("🚀 Running evaluation...")
+    # with torch.no_grad():
+    #     for i, (imgs, masks) in enumerate(tqdm(test_loader, desc="Evaluating")):
+    #         imgs, masks = imgs.to(device), masks.to(device, dtype=torch.long)
+    #         preds = model(imgs)
+
+    #         dice_list = dice_score(preds, masks, num_classes=num_classes, per_class=True)
+    #         iou_list = iou_score(preds, masks, num_classes=num_classes, per_class=True)
+
+    #         foreground_classes = list(range(1, num_classes))  # skip background (class 0)
+    #         total_dice_fg += sum(dice_list[c] for c in foreground_classes) / len(foreground_classes)
+    #         total_iou_fg  += sum(iou_list[c] for c in foreground_classes) / len(foreground_classes)
+
+    #         for c in range(num_classes):
+    #             class_dice[c] += dice_list[c]
+    #             class_iou[c] += iou_list[c]
+
+    #         total_dice += sum(dice_list) / num_classes
+    #         total_iou += sum(iou_list) / num_classes
+    #         num_samples += 1
+
+    #         if i in visual_indices:
+    #             img_path = save_visual(imgs[0], masks[0], preds[0], vis_dir, i)
+    #             wandb.log({"sample_prediction": wandb.Image(img_path)})
+
+    # # ============================================================
+    # # --- METRICS OUTPUT ---
+    # # ============================================================
+    # avg_dice_all = total_dice / num_samples
+    # avg_iou_all  = total_iou / num_samples
+    # avg_dice_fg  = total_dice_fg / num_samples
+    # avg_iou_fg   = total_iou_fg / num_samples
+    # avg_class_dice = [d / num_samples for d in class_dice]
+    # avg_class_iou = [i / num_samples for i in class_iou]
+    # class_names = ["Background", "RV", "Myocardium", "LV"]
+
+    # print("\n✅ Evaluation complete!")
+    # print(f"📊 Mean Dice: {avg_dice:.4f}")
+    # print(f"📊 Mean IoU:  {avg_iou:.4f}")
+    # for name, d, i in zip(class_names, avg_class_dice, avg_class_iou):
+    #     print(f"{name:12s} Dice={d:.4f}  IoU={i:.4f}")
+
+    # metrics = {
+    #     "phase": phase,
+    #     "mean_dice": float(avg_dice),
+    #     "mean_iou": float(avg_iou),
+    #     "per_class": {
+    #         name: {"dice": float(d), "iou": float(i)}
+    #         for name, d, i in zip(class_names, avg_class_dice, avg_class_iou)
+    #     }
+    # }
+
+    # metrics_path = os.path.join(save_dir, "eval_metrics.json")
+    # with open(metrics_path, "w") as f:
+    #     json.dump(metrics, f, indent=4)
+
+    # # ✅ Log metrics to W&B
+    # wandb.log({
+    #     "mean_dice": avg_dice,
+    #     "mean_iou": avg_iou,
+    #     **{f"dice_{name}": d for name, d in zip(class_names, avg_class_dice)},
+    #     **{f"iou_{name}": i for name, i in zip(class_names, avg_class_iou)},
+    # })
+    # wandb.save(metrics_path)
+
+    # print(f"💾 Metrics saved to {metrics_path}")
+    # print(f"🖼️ Visualizations saved to {vis_dir}")
+
+    # run.finish()
+
     # ============================================================
     # --- METRIC INITIALIZATION ---
     # ============================================================
@@ -152,6 +238,7 @@ def evaluate(cfg=None, debug=False):
     class_dice = [0.0] * num_classes
     class_iou = [0.0] * num_classes
     total_dice, total_iou = 0.0, 0.0
+    total_dice_fg, total_iou_fg = 0.0, 0.0
     num_samples = 0
 
     vis_dir = os.path.join(save_dir, "predictions")
@@ -167,16 +254,24 @@ def evaluate(cfg=None, debug=False):
             preds = model(imgs)
 
             dice_list = dice_score(preds, masks, num_classes=num_classes, per_class=True)
-            iou_list = iou_score(preds, masks, num_classes=num_classes, per_class=True)
+            iou_list  = iou_score(preds, masks, num_classes=num_classes, per_class=True)
 
+            # Foreground-only (exclude background class 0)
+            foreground_classes = list(range(1, num_classes))
+            total_dice_fg += sum(dice_list[c] for c in foreground_classes) / len(foreground_classes)
+            total_iou_fg  += sum(iou_list[c]  for c in foreground_classes) / len(foreground_classes)
+
+            # Per-class accumulation
             for c in range(num_classes):
                 class_dice[c] += dice_list[c]
-                class_iou[c] += iou_list[c]
+                class_iou[c]  += iou_list[c]
 
+            # Mean including background
             total_dice += sum(dice_list) / num_classes
-            total_iou += sum(iou_list) / num_classes
+            total_iou  += sum(iou_list)  / num_classes
             num_samples += 1
 
+            # Optional visualization
             if i in visual_indices:
                 img_path = save_visual(imgs[0], masks[0], preds[0], vis_dir, i)
                 wandb.log({"sample_prediction": wandb.Image(img_path)})
@@ -184,22 +279,30 @@ def evaluate(cfg=None, debug=False):
     # ============================================================
     # --- METRICS OUTPUT ---
     # ============================================================
-    avg_dice = total_dice / num_samples
-    avg_iou = total_iou / num_samples
+    avg_dice_all = total_dice / num_samples
+    avg_iou_all  = total_iou / num_samples
+    avg_dice_fg  = total_dice_fg / num_samples
+    avg_iou_fg   = total_iou_fg / num_samples
+
     avg_class_dice = [d / num_samples for d in class_dice]
-    avg_class_iou = [i / num_samples for i in class_iou]
+    avg_class_iou  = [i / num_samples for i in class_iou]
     class_names = ["Background", "RV", "Myocardium", "LV"]
 
     print("\n✅ Evaluation complete!")
-    print(f"📊 Mean Dice: {avg_dice:.4f}")
-    print(f"📊 Mean IoU:  {avg_iou:.4f}")
+    print(f"📊 Mean Dice (all classes): {avg_dice_all:.4f}")
+    print(f"📊 Mean IoU  (all classes): {avg_iou_all:.4f}")
+    print(f"📊 Mean Dice (foreground):  {avg_dice_fg:.4f}")
+    print(f"📊 Mean IoU  (foreground):  {avg_iou_fg:.4f}\n")
+
     for name, d, i in zip(class_names, avg_class_dice, avg_class_iou):
         print(f"{name:12s} Dice={d:.4f}  IoU={i:.4f}")
 
     metrics = {
         "phase": phase,
-        "mean_dice": float(avg_dice),
-        "mean_iou": float(avg_iou),
+        "mean_dice_all": float(avg_dice_all),
+        "mean_iou_all":  float(avg_iou_all),
+        "mean_dice_fg":  float(avg_dice_fg),
+        "mean_iou_fg":   float(avg_iou_fg),
         "per_class": {
             name: {"dice": float(d), "iou": float(i)}
             for name, d, i in zip(class_names, avg_class_dice, avg_class_iou)
@@ -212,14 +315,16 @@ def evaluate(cfg=None, debug=False):
 
     # ✅ Log metrics to W&B
     wandb.log({
-        "mean_dice": avg_dice,
-        "mean_iou": avg_iou,
+        "mean_dice_all": avg_dice_all,
+        "mean_iou_all":  avg_iou_all,
+        "mean_dice_fg":  avg_dice_fg,
+        "mean_iou_fg":   avg_iou_fg,
         **{f"dice_{name}": d for name, d in zip(class_names, avg_class_dice)},
         **{f"iou_{name}": i for name, i in zip(class_names, avg_class_iou)},
     })
     wandb.save(metrics_path)
 
-    print(f"💾 Metrics saved to {metrics_path}")
+    print(f"\n💾 Metrics saved to {metrics_path}")
     print(f"🖼️ Visualizations saved to {vis_dir}")
 
     run.finish()

@@ -118,7 +118,7 @@ class UNet(nn.Module):
             # Handle small mismatches (due to pooling/upsampling)
             if x.shape[2:] != skip.shape[2:]:
                 x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=False)
-
+            
             # Concatenate skip connection
             x = torch.cat((skip, x), dim=1)
 
