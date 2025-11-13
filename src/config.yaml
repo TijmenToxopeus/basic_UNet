@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp21_new_train_summary"
+  experiment_name: "exp22_try_new_finetune_modes"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -22,7 +22,7 @@ train:
     features: [64, 128, 256, 512, 1024, 2048]
   parameters:
     learning_rate: 1e-4
-    num_epochs: 10
+    num_epochs: 50
     save_interval: 10
     loss_function: "ce"
   paths:
@@ -70,3 +70,6 @@ pruning:
       decoders.7: 0.25
       decoders.9: 0.05
       decoders.11: 0.1
+  finetune:
+    mode: "rewind"               # "current", "reinit", "rewind"
+

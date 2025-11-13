@@ -24,6 +24,7 @@ class ExperimentPaths:
         self.results_root = Path(cfg["train"]["paths"]["save_root"]).resolve()
         self.base_dir = self.results_root / self.model_name / self.exp_name
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.baseline_training_dir = self.base_dir / "baseline" / "training"
 
         # --- Pruning ratio suffix (e.g. "0_0_10_20_30_30_30_20_10") ---
         self.suffix = self._get_suffix_from_ratios(cfg)
@@ -115,6 +116,10 @@ class ExperimentPaths:
         if not config_dst.exists():
             shutil.copy2(self.config_file_path, config_dst)
             #print(f"💾 Saved config snapshot to {config_dst}")
+
+    def baseline_training_dir(self):
+        """Folder containing epoch_X.pth files for baseline training."""
+        return self.base_dir / "baseline" / "training"
 
     # ------------------------------------------------------------
     # def __repr__(self):

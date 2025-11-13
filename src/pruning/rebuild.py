@@ -244,23 +244,40 @@ def plot_unet_schematic(enc_features, dec_features, bottleneck_out,
 
 
 def rebuild_pruned_unet(model, masks, save_path=None):
-    """Main orchestrator."""
+    """
+    Rebuild pruned UNet architecture and optionally save metadata.
+    (No longer saves model weights here — weights may be overwritten
+    later by finetune_mode!)
+    """
 
     print("🔧 Rebuilding pruned UNet architecture...")
 
     enc_features, bottleneck_out, dec_features = get_pruned_feature_sizes(model, masks)
 
-    pruned_model = build_pruned_unet(model, enc_features, dec_features=dec_features, bottleneck_out=bottleneck_out)
+    # Build architecture
+    pruned_model = build_pruned_unet(
+        model,
+        enc_features,
+        dec_features=dec_features,
+        bottleneck_out=bottleneck_out
+    )
+
+    # Copy baseline weights (sliced)
     pruned_model = copy_pruned_weights(model, pruned_model, masks)
 
-    plot_unet_schematic(enc_features, dec_features, bottleneck_out, 
-                        in_ch=1, out_ch=4, figsize=(10, 6), title="U-Net Structure")
+    # Optional: visualization
+    plot_unet_schematic(
+        enc_features, dec_features, bottleneck_out,
+        in_ch=1, out_ch=4,
+        figsize=(10, 6),
+        title="U-Net Structure"
+    )
 
-
+    # ----------------------------
+    # SAVE ONLY METADATA HERE
+    # ----------------------------
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        torch.save(pruned_model.state_dict(), save_path)
-        print(f"💾 Saved pruned model to {save_path}")
 
         meta = {
             "enc_features": enc_features,
@@ -271,7 +288,8 @@ def rebuild_pruned_unet(model, masks, save_path=None):
         meta_path = save_path.with_name(save_path.stem + "_meta.json")
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=4)
-        #print(f"🧾 Saved metadata to {meta_path}")
+
+        print(f"🧾 Saved metadata to {meta_path}")
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model
