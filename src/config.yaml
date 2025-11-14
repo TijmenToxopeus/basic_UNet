@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp21_new_train_summary"
+  experiment_name: "exp23"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -48,6 +48,7 @@ evaluation:
 # ---------------------------------------------------------------
 pruning:
   method: "l1_norm"
+  reinitialize: true
   ckpt_path:
     subfolder: "baseline"           # where baseline model is stored
     ckpt_name: "final_model.pth"

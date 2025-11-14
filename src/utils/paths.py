@@ -93,13 +93,29 @@ class ExperimentPaths:
         self.logs_dir.mkdir(exist_ok=True)
 
     # ------------------------------------------------------------
+    # def _get_suffix_from_ratios(self, cfg):
+    #     """Generate suffix like 0_0_10_20_30_30_30_20_10 if ratios exist."""
+    #     prune_cfg = cfg.get("pruning", {})
+    #     ratios = prune_cfg.get("ratios", {}).get("block_ratios", None)
+    #     if ratios:
+    #         return "_".join(str(int(v * 100)) for v in ratios.values())
+    #     return "no_prune"
+
     def _get_suffix_from_ratios(self, cfg):
-        """Generate suffix like 0_0_10_20_30_30_30_20_10 if ratios exist."""
+        """Generate suffix like 0_0_10_20_30_30_30_20_10 or add _reinit if needed."""
         prune_cfg = cfg.get("pruning", {})
         ratios = prune_cfg.get("ratios", {}).get("block_ratios", None)
+
         if ratios:
-            return "_".join(str(int(v * 100)) for v in ratios.values())
-        return "no_prune"
+            suffix = "_".join(str(int(v * 100)) for v in ratios.values())
+        else:
+            suffix = "no_prune"
+
+        # Add indicator if weights are reinitialized after pruning
+        if prune_cfg.get("reinitialize", False):
+            suffix += "_reinit"
+
+        return suffix
 
     # ------------------------------------------------------------
     def ensure_dir(self, path):

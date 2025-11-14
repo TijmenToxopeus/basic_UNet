@@ -1,0 +1,143 @@
+[33mcommit a42c17f1e3194fe602f0b80b5fdfc57f4a305a09[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Thu Nov 13 17:41:22 2025 +0100
+
+    made 3 options for initializing the weights for retraining after pruning; 1. keep current, 2. random initialization, 3. rewind to weights of early training
+
+[33mcommit 25b8bc8d28e7db78f89d743c898a2d9156e7ba70[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Tue Nov 11 15:38:46 2025 +0100
+
+    finished l1 mag distributions
+
+[33mcommit bf2f5a0e268020cdb7d0f2080da2a0fa3e272acb[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Tue Nov 11 14:51:45 2025 +0100
+
+    Started making the l1 magnitude distributions per layer
+
+[33mcommit d0765e0ba9c1c5381388dda6388c5032947cc46b[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Fri Nov 7 16:09:09 2025 +0100
+
+    Cleaned up some code
+
+[33mcommit 1860a9e6e9eaa121d426fbacb19cad38ce7faaa4[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Fri Nov 7 15:37:01 2025 +0100
+
+    tried parent child structure in wandb, not sure if it works
+
+[33mcommit 67bfce7ebba3c4440cbf2fac5f6ad49b92ad4214[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Nov 5 16:04:21 2025 +0100
+
+    Trying to put all stages as childs of one parent run instead of each one as individual run, not yet succeeded
+
+[33mcommit d258a3709576e8b816ce9521daa4cf2e5cafa7ec[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Nov 5 14:03:24 2025 +0100
+
+    linked the project to wandb for experiment tracking
+
+[33mcommit 358a8c8042a2dcc3f22f5a2485c1e9b3487b683c[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Tue Nov 4 17:04:14 2025 +0100
+
+    finished pipeline files for baseline training + eval and one for pruning + eval + retraining + eval
+
+[33mcommit 671dcd2d13edcda9b0e3103d42d286a51e508676[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Tue Nov 4 15:36:53 2025 +0100
+
+    Pipeline now puts everything in the correct folder, next up; make the yaml file more compact and make py files to run multiple parts of the pipeline like; prune_retrain_eval
+
+[33mcommit 5e6a4d2c5902868c2782649eb3d89880c2fbb64b[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Mon Nov 3 17:31:32 2025 +0100
+
+    started on steering everything from a config.yaml file, not yet correct
+
+[33mcommit 578248ab7e687e6bf5b084b904f3f2e9f373c3e7[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Thu Oct 30 17:27:49 2025 +0100
+
+    added chaging learning rate if dice plateaus
+
+[33mcommit 444ec2a756a8df4258ff7de12552fe36ed994332[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Thu Oct 30 16:29:56 2025 +0100
+
+    Pipline is also working for larger UNet
+
+[33mcommit ab1d856d1d371418fed823104f945c7d400e920c[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Thu Oct 30 15:27:30 2025 +0100
+
+    Finished first working version of pruning pipeline, including retraining and evaluation. Next thing will be config files to steer everything and logical folders for saving results
+
+[33mcommit e4f6e1f56d0f58ecca2665d7de56115f3b73d12e[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Thu Oct 30 12:24:06 2025 +0100
+
+    Reorganized the pruning folder, trying to make nice pipeline next
+
+[33mcommit c27dc8afd083b0c4bb090f52e39a6ff9fbef965c[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Oct 29 17:11:05 2025 +0100
+
+    non uniformal pruning is working and can be evaluated, metric not yet correct
+
+[33mcommit 253677974574b4934c4c620006840b8a573537f8[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Oct 29 17:00:55 2025 +0100
+
+    got the evaluation on a pruned model working
+
+[33mcommit f4527affbbd059d25eb8e47dab7b2bec658f0911[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Oct 29 16:21:32 2025 +0100
+
+    quick save before trying to make the evaluation function more dynamic
+
+[33mcommit 1b297493ab7ec362a20a4a548cdfed10c33c5dc0[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Oct 29 14:54:48 2025 +0100
+
+    Think i got the non uniform pruning ratios working as well, problem lied at the shape of the skip connection
+
+[33mcommit db3fa95d3f687d4c0eb1a6ccaa1d29c02ff19355[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Wed Oct 29 11:03:52 2025 +0100
+
+    working pruning code for uniformal pruning ratio
+
+[33mcommit 8ec76eb4c5fb7786df6727c2db7b0ef81a3dccf5[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Mon Oct 27 16:36:10 2025 +0100
+
+    added pruning code, not yet correctly devided into modules and evaluation not yet working becuase model not saved correctly
+
+[33mcommit e35ddc04daa3e22a50ed92da72d124108c8e7ed9[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Mon Oct 27 14:16:18 2025 +0100
+
+    added quick gpt generated readme
+
+[33mcommit 73ff014e5e2f64617dc3e74efef486ee7d3d6130[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Mon Oct 27 12:42:56 2025 +0100
+
+    added quick gpt generated readme
+
+[33mcommit 4044b1822aaad6ec0bf8ef7495336ab5281fc1ab[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Mon Oct 27 12:38:52 2025 +0100
+
+    Removed the config files
+
+[33mcommit 0d0a53204aa07ebabd44d46d2f62b528ac9c4c78[m
+Author: Tijmen Toxopeus <tijmentoxopeus@gmail.com>
+Date:   Mon Oct 27 12:31:14 2025 +0100
+
+    Initial commit: setup basic_UNet project
