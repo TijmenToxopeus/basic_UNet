@@ -4,11 +4,13 @@ This version keeps all configuration changes in memory (does not modify config.y
 """
 
 import os
+import yaml
 from copy import deepcopy
 
 from src.training.train import train_model
-from src.training.eval import evaluate   # note: consistent import path
+from src.training.eval import evaluate
 from src.utils.config import load_config
+from src.utils.paths import get_paths
 
 
 def run_baseline_pipeline():
@@ -17,7 +19,7 @@ def run_baseline_pipeline():
     # ============================================================
     # --- LOAD CONFIG ---
     # ============================================================
-    cfg, _ = load_config(return_path=True)
+    cfg, cfg_path = load_config(return_path=True)
     baseline_cfg = deepcopy(cfg)
 
     # ------------------------------------------------------------
@@ -25,20 +27,37 @@ def run_baseline_pipeline():
     # ------------------------------------------------------------
     print("\n🏋️ Training baseline model...\n")
 
-    # modify config in memory (not on disk)
     baseline_cfg["train"]["phase"] = "training"
     baseline_cfg["train"]["paths"]["subfolder"] = "baseline"
 
-    # run training directly with config dict
     train_model(cfg=baseline_cfg)
 
     # ------------------------------------------------------------
     # 2️⃣ Evaluate baseline model
     # ------------------------------------------------------------
     baseline_cfg["evaluation"]["phase"] = "baseline_evaluation"
-
-    # run evaluation directly with config dict
     evaluate(cfg=baseline_cfg)
+
+    # ------------------------------------------------------------
+    # 3️⃣ Save FINAL config.yaml into the baseline folder
+    # ------------------------------------------------------------
+    print("\n💾 Saving baseline config.yaml into experiment directory...\n")
+
+    # Build paths using the updated config
+    paths = get_paths(baseline_cfg, cfg_path)
+
+    # Path where the baseline model was stored
+    baseline_dir = paths.base_dir / "baseline"
+
+    # Create folder if needed
+    baseline_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write config file
+    config_save_path = baseline_dir / "config.yaml"
+    with open(config_save_path, "w") as f:
+        yaml.dump(baseline_cfg, f)
+
+    print(f"📄 Saved baseline config to: {config_save_path}")
 
     print("\n✅ BASELINE pipeline complete!\n")
 

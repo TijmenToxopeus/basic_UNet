@@ -14,6 +14,11 @@ import random
 def get_torchio_augmentation_pipeline():
     """Return a TorchIO augmentation pipeline for MRI-like images."""
     return tio.Compose([
+        # # Resize to larger resolution first
+        # tio.Resize((1, 320, 320)),
+
+        # # Central crop to focus on heart
+        # tio.CropOrPad((1, 256, 256)),
         tio.RandomElasticDeformation(num_control_points=7, max_displacement=3, p=0.3),  # elastic deformation
         tio.RandomAffine(scales=(0.9, 1.1), degrees=10,              # rotation/scaling
                          translation=5, p=0.5),
@@ -21,6 +26,8 @@ def get_torchio_augmentation_pipeline():
         tio.RandomBiasField(coefficients=0.3, p=0.3),                 # MRI intensity bias
         tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.3),                # gamma correction
     ])
+
+
 
 def summarize_torchio_pipeline(pipeline):
     summary = []

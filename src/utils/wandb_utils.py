@@ -12,6 +12,7 @@ def setup_wandb(cfg, job_type="training"):
     entity = exp_cfg.get("wandb_entity", "tijmen-toxo-tu-delft")
 
     run_name = f"{exp_name}_{job_type}"
+    os.environ["WANDB_SILENT"] = "true"
 
     run = wandb.init(
         project="unet-pruning",
@@ -27,8 +28,8 @@ def setup_wandb(cfg, job_type="training"):
         tags=[model_name, job_type],
     )
 
-    print(f"🧭 W&B initialized for '{job_type}' under experiment '{exp_name}' ({entity})")
-    print(f"📂 Logs stored in: {wandb.run.dir}")
+    # print(f"🧭 W&B initialized for '{job_type}' under experiment '{exp_name}' ({entity})")
+    # print(f"📂 Logs stored in: {wandb.run.dir}")
 
     return run
 

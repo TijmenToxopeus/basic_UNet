@@ -11,7 +11,7 @@ import wandb
 # --- Project imports ---
 from src.models.unet import UNet
 from src.training.loss import get_loss_function
-from src.training.metrics import dice_score, iou_score
+from src.training.metrics import dice_score, iou_score, compute_model_flops, compute_inference_time
 from src.training.data_loader import get_train_val_loaders, summarize_torchio_pipeline
 from src.pruning.rebuild import build_pruned_unet
 from src.utils.config import load_config
@@ -43,7 +43,7 @@ def train_model(cfg=None):
         raise ValueError(f"❌ Invalid training phase '{phase}'. Must be one of: {valid_phases}")
 
     print(f"🚀 Starting {phase} for experiment {exp_cfg['experiment_name']} ({exp_cfg['model_name']})")
-    print(paths)
+
 
     # ============================================================
     # --- SETUP HYPERPARAMETERS ---
@@ -85,11 +85,11 @@ def train_model(cfg=None):
         dec_features = meta["dec_features"]
         bottleneck_out = meta["bottleneck_out"]
 
-        print(f"🧠 Rebuilding pruned UNet → enc={enc_features}, dec={dec_features}, bottleneck={bottleneck_out}")
+        # print(f"🧠 Rebuilding pruned UNet → enc={enc_features}, dec={dec_features}, bottleneck={bottleneck_out}")
         base_model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
         model = build_pruned_unet(base_model, enc_features, dec_features, bottleneck_out).to(device)
     else:
-        print(f"🧠 Building baseline UNet → features {model_cfg['features']}")
+        # print(f"🧠 Building baseline UNet → features {model_cfg['features']}")
         model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=model_cfg["features"]).to(device)
 
     wandb.watch(model, log="all")
@@ -99,7 +99,7 @@ def train_model(cfg=None):
     # ============================================================
     save_dir = paths.train_save_dir
     paths.ensure_dir(save_dir)
-    print(f"📂 Saving training outputs to: {save_dir}")
+    # print(f"📂 Saving training outputs to: {save_dir}")
 
     train_loader, val_loader, augmentation_summary = get_train_val_loaders(
         img_dir=paths.train_dir,
@@ -114,7 +114,9 @@ def train_model(cfg=None):
 
     criterion = get_loss_function(loss_fn_name)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=3)
+    # scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=3)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
 
     metrics_log = {"epoch": [], "train_loss": [], "val_dice": [], "val_iou": [], "lr": []}
 
@@ -155,7 +157,8 @@ def train_model(cfg=None):
         val_dice /= len(val_loader)
         val_iou /= len(val_loader)
 
-        scheduler.step(val_dice)
+        # scheduler.step(val_dice)
+        scheduler.step()
         current_lr = optimizer.param_groups[0]["lr"]
 
         print(f"📈 Epoch {epoch+1:02d}: Loss={avg_loss:.4f}, Dice={val_dice:.4f}, IoU={val_iou:.4f}, LR={current_lr:.6e}")
@@ -179,7 +182,7 @@ def train_model(cfg=None):
         if (epoch + 1) % save_interval == 0 or (epoch + 1) == epochs:
             ckpt_path = os.path.join(save_dir, f"epoch_{epoch+1}.pth")
             torch.save(model.state_dict(), ckpt_path)
-            print(f"💾 Saved checkpoint: {ckpt_path}")
+            # print(f"💾 Saved checkpoint: {ckpt_path}")
             wandb.save(ckpt_path)
 
     # ============================================================
@@ -189,6 +192,30 @@ def train_model(cfg=None):
     torch.save(model.state_dict(), final_model_path)
     print(f"💾 Saved final model: {final_model_path}")
     wandb.save(final_model_path)
+
+    #print("\n📊 Profiling model FLOPs & inference speed...")
+
+    # Input shape for 2D UNet on ACDC slices
+    input_shape = (1, in_ch, 256, 256)
+
+    model.eval()
+    with torch.no_grad():
+        flops, params = compute_model_flops(model, input_shape)
+        infer_ms = compute_inference_time(model, input_shape)
+
+    print(f"🧮 Params: {params/1e6:.2f} M")
+    print(f"⚙️ FLOPs: {flops/1e9:.2f} GFLOPs")
+    print(f"⚡ Inference time: {infer_ms:.2f} ms")
+
+    # Log to W&B
+    wandb.log({
+        "params_m": params / 1e6,
+        "flops_g": flops / 1e9,
+        "inference_ms": infer_ms,
+    })
+
+
+
 
     with open(os.path.join(save_dir, "metrics.json"), "w") as f:
         json.dump(metrics_log, f, indent=4)
@@ -215,6 +242,9 @@ def train_model(cfg=None):
         "learning_rate": lr,
         "batch_size": batch_size,
         "device": str(device),
+        "params_m": params / 1e6,
+        "flops_g": flops / 1e9,
+        "inference_ms": infer_ms,
         "final_train_loss": float(metrics_log["train_loss"][-1]),
         "final_val_dice": float(metrics_log["val_dice"][-1]),
         "final_val_iou": float(metrics_log["val_iou"][-1]),

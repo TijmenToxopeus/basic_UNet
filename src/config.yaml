@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp23"
+  experiment_name: "exp31_add_cropping"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -14,17 +14,17 @@ experiment:
 train:
   phase: "training"               # "training" or "retraining"
   val_ratio: 0.2
-  batch_size: 8
+  batch_size: 16
   num_slices_per_volume: null
   model:
     in_channels: 1
     out_channels: 4
-    features: [64, 128, 256, 512, 1024, 2048]
+    features: [64, 128, 256, 512]
   parameters:
-    learning_rate: 1e-4
-    num_epochs: 10
-    save_interval: 10
-    loss_function: "ce"
+    learning_rate: 1e-3
+    num_epochs: 15
+    save_interval: 20
+    loss_function: "ce_dice"
   paths:
     train_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
     label_dir: "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
@@ -58,16 +58,16 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.15
-      encoders.1: 0.15
-      encoders.2: 0.25
-      encoders.3: 0.25
-      encoders.4: 0.3
-      encoders.5: 0.3
+      encoders.0: 0.0
+      encoders.1: 0.1
+      encoders.2: 0.15
+      encoders.3: 0.2
+      # encoders.4: 0.3
+      # encoders.5: 0.3
       bottleneck: 0.1
-      decoders.1: 0.1
-      decoders.3: 0.15
-      decoders.5: 0.2
-      decoders.7: 0.25
-      decoders.9: 0.05
-      decoders.11: 0.1
+      decoders.1: 0.3
+      decoders.3: 0.2
+      decoders.5: 0.0
+      decoders.7: 0.0
+      # decoders.9: 0.05
+      # decoders.11: 0.1
