@@ -1,3 +1,269 @@
+# import os
+# import json
+# import torch
+# import torch.nn as nn
+# import matplotlib.pyplot as plt
+# from torch.utils.data import DataLoader
+# from torch.optim.lr_scheduler import ReduceLROnPlateau
+# from tqdm import tqdm
+# import wandb  
+
+# # --- Project imports ---
+# from src.models.unet import UNet
+# from src.training.loss import get_loss_function
+# from src.training.metrics import dice_score, iou_score, compute_model_flops, compute_inference_time
+# from src.training.data_loader import get_train_val_loaders, summarize_torchio_pipeline
+# from src.pruning.rebuild import build_pruned_unet, load_full_pruned_model
+# from src.utils.config import load_config
+# from src.utils.paths import get_paths
+# from src.utils.wandb_utils import setup_wandb
+
+
+# # ------------------------------------------------------------
+# # TRAINING PIPELINE
+# # ------------------------------------------------------------
+# def train_model(cfg=None):
+#     # ============================================================
+#     # --- LOAD CONFIGURATION ---
+#     # ============================================================
+#     if cfg is None:
+#         cfg, config_path = load_config(return_path=True)
+#     else:
+#         config_path = None
+
+#     paths = get_paths(cfg, config_path)
+#     paths.save_config_snapshot()
+
+#     exp_cfg = cfg["experiment"]
+#     train_cfg = cfg["train"]
+
+#     phase = train_cfg["phase"].lower()
+#     valid_phases = ["training", "retraining"]
+#     if phase not in valid_phases:
+#         raise ValueError(f"❌ Invalid training phase '{phase}'. Must be one of: {valid_phases}")
+
+#     print(f"🚀 Starting {phase} for experiment {exp_cfg['experiment_name']} ({exp_cfg['model_name']})")
+
+
+#     # ============================================================
+#     # --- SETUP HYPERPARAMETERS ---
+#     # ============================================================
+#     device = torch.device(exp_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
+
+#     model_cfg = train_cfg["model"]
+#     params = train_cfg["parameters"]
+#     batch_size = train_cfg["batch_size"]
+#     val_ratio = train_cfg["val_ratio"]
+#     num_slices_per_volume = train_cfg["num_slices_per_volume"]
+
+#     lr = float(params["learning_rate"])
+#     epochs = params["num_epochs"]
+#     save_interval = params["save_interval"]
+#     loss_fn_name = params["loss_function"]
+
+#     in_ch = model_cfg["in_channels"]
+#     out_ch = model_cfg["out_channels"]
+
+#     # ============================================================
+#     # --- INITIALIZE WANDB ---
+#     # ============================================================
+#     run = setup_wandb(cfg, job_type="training")
+#     wandb.watch_called = False  # ensure no duplicate hooks
+
+#     # ============================================================
+#     # --- BUILD MODEL ---
+#     # ============================================================
+#     if phase == "retraining":
+#         meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
+#         if not meta_path.exists():
+#             raise FileNotFoundError(f"❌ Expected pruning metadata not found: {meta_path}")
+
+#         with open(meta_path, "r") as f:
+#             meta = json.load(f)
+
+#         enc_features = meta["enc_features"]
+#         dec_features = meta["dec_features"]
+#         bottleneck_out = meta["bottleneck_out"]
+
+#         # print(f"🧠 Rebuilding pruned UNet → enc={enc_features}, dec={dec_features}, bottleneck={bottleneck_out}")
+#         base_model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
+#         model = build_pruned_unet(base_model, enc_features, dec_features, bottleneck_out).to(device)
+#     else:
+#         # print(f"🧠 Building baseline UNet → features {model_cfg['features']}")
+#         model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=model_cfg["features"]).to(device)
+
+#     wandb.watch(model, log="all")
+
+#     # ============================================================
+#     # --- DATA & OPTIMIZATION SETUP ---
+#     # ============================================================
+#     save_dir = paths.train_save_dir
+#     paths.ensure_dir(save_dir)
+#     # print(f"📂 Saving training outputs to: {save_dir}")
+
+#     train_loader, val_loader, augmentation_summary = get_train_val_loaders(
+#         img_dir=paths.train_dir,
+#         lbl_dir=paths.label_dir,
+#         batch_size=batch_size,
+#         val_ratio=val_ratio,
+#         shuffle=True,
+#         num_slices_per_volume=num_slices_per_volume
+#     )
+
+#     print(f"✅ Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
+
+#     criterion = get_loss_function(loss_fn_name)
+#     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+#     # scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=3)
+#     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+
+#     metrics_log = {"epoch": [], "train_loss": [], "val_dice": [], "val_iou": [], "lr": []}
+
+#     # ============================================================
+#     # --- TRAINING LOOP ---
+#     # ============================================================
+#     print(f"\n🚦 Training for {epochs} epochs...\n")
+#     for epoch in range(epochs):
+#         model.train()
+#         epoch_loss = 0.0
+
+#         for batch_idx, (imgs, masks) in tqdm(
+#             enumerate(train_loader),
+#             total=len(train_loader),
+#             desc=f"Epoch {epoch+1}/{epochs}",
+#             ncols=100,
+#         ):
+#             imgs, masks = imgs.to(device), masks.to(device, dtype=torch.long)
+#             optimizer.zero_grad()
+#             preds = model(imgs)
+#             loss = criterion(preds, masks)
+#             loss.backward()
+#             optimizer.step()
+#             epoch_loss += loss.item()
+
+#         avg_loss = epoch_loss / len(train_loader)
+
+#         # --- Validation ---
+#         model.eval()
+#         val_dice, val_iou = 0.0, 0.0
+#         with torch.no_grad():
+#             for imgs, masks in val_loader:
+#                 imgs, masks = imgs.to(device), masks.to(device, dtype=torch.long)
+#                 preds = model(imgs)
+#                 val_dice += dice_score(preds, masks, num_classes=out_ch)
+#                 val_iou += iou_score(preds, masks, num_classes=out_ch)
+
+#         val_dice /= len(val_loader)
+#         val_iou /= len(val_loader)
+
+#         # scheduler.step(val_dice)
+#         scheduler.step()
+#         current_lr = optimizer.param_groups[0]["lr"]
+
+#         print(f"📈 Epoch {epoch+1:02d}: Loss={avg_loss:.4f}, Dice={val_dice:.4f}, IoU={val_iou:.4f}, LR={current_lr:.6e}")
+
+#         metrics_log["epoch"].append(epoch + 1)
+#         metrics_log["train_loss"].append(avg_loss)
+#         metrics_log["val_dice"].append(val_dice)
+#         metrics_log["val_iou"].append(val_iou)
+#         metrics_log["lr"].append(current_lr)
+
+#         # ✅ Log to W&B
+#         wandb.log({
+#             "epoch": epoch + 1,
+#             "train_loss": avg_loss,
+#             "val_dice": val_dice,
+#             "val_iou": val_iou,
+#             "lr": current_lr,
+#         })
+
+#         # --- Save checkpoint ---
+#         if (epoch + 1) % save_interval == 0 or (epoch + 1) == epochs:
+#             ckpt_path = os.path.join(save_dir, f"epoch_{epoch+1}.pth")
+#             torch.save(model.state_dict(), ckpt_path)
+#             # print(f"💾 Saved checkpoint: {ckpt_path}")
+#             wandb.save(ckpt_path)
+
+#     # ============================================================
+#     # --- SAVE METRICS & PLOTS ---
+#     # ============================================================
+#     final_model_path = os.path.join(save_dir, "final_model.pth")
+#     torch.save(model.state_dict(), final_model_path)
+#     print(f"💾 Saved final model: {final_model_path}")
+#     wandb.save(final_model_path)
+
+#     #print("\n📊 Profiling model FLOPs & inference speed...")
+
+#     # Input shape for 2D UNet on ACDC slices
+#     input_shape = (1, in_ch, 256, 256)
+
+#     model.eval()
+#     with torch.no_grad():
+#         flops, params = compute_model_flops(model, input_shape)
+#         infer_ms = compute_inference_time(model, input_shape)
+
+#     print(f"🧮 Params: {params/1e6:.2f} M")
+#     print(f"⚙️ FLOPs: {flops/1e9:.2f} GFLOPs")
+#     print(f"⚡ Inference time: {infer_ms:.2f} ms")
+
+#     # Log to W&B
+#     wandb.log({
+#         "params_m": params / 1e6,
+#         "flops_g": flops / 1e9,
+#         "inference_ms": infer_ms,
+#     })
+
+
+
+
+#     with open(os.path.join(save_dir, "metrics.json"), "w") as f:
+#         json.dump(metrics_log, f, indent=4)
+
+#     plt.figure()
+#     plt.plot(metrics_log["epoch"], metrics_log["train_loss"], label="Train Loss")
+#     plt.plot(metrics_log["epoch"], metrics_log["val_dice"], label="Val Dice")
+#     plt.plot(metrics_log["epoch"], metrics_log["val_iou"], label="Val IoU")
+#     plt.xlabel("Epoch")
+#     plt.ylabel("Value")
+#     plt.title(f"Training Progress ({phase})")
+#     plt.legend()
+#     plt.grid(True)
+#     plot_path = os.path.join(save_dir, "training_curves.png")
+#     plt.savefig(plot_path)
+#     plt.close()
+#     wandb.log({"training_curve": wandb.Image(plot_path)})
+
+#     summary = {
+#         "model_name": exp_cfg["model_name"],
+#         "experiment": exp_cfg["experiment_name"],
+#         "phase": phase,
+#         "epochs": epochs,
+#         "learning_rate": lr,
+#         "batch_size": batch_size,
+#         "device": str(device),
+#         "params_m": params / 1e6,
+#         "flops_g": flops / 1e9,
+#         "inference_ms": infer_ms,
+#         "final_train_loss": float(metrics_log["train_loss"][-1]),
+#         "final_val_dice": float(metrics_log["val_dice"][-1]),
+#         "final_val_iou": float(metrics_log["val_iou"][-1]),
+#         "augmentation": {
+#             "library": "torchio",
+#             "transforms": augmentation_summary if augmentation_summary else "none"
+#         }
+#     }
+#     with open(os.path.join(save_dir, "train_summary.json"), "w") as f:
+#         json.dump(summary, f, indent=4)
+
+#     print("✅ Training complete.")
+#     run.finish()
+
+
+# if __name__ == "__main__":
+#     train_model()
+
+
 import os
 import json
 import torch
@@ -13,7 +279,7 @@ from src.models.unet import UNet
 from src.training.loss import get_loss_function
 from src.training.metrics import dice_score, iou_score, compute_model_flops, compute_inference_time
 from src.training.data_loader import get_train_val_loaders, summarize_torchio_pipeline
-from src.pruning.rebuild import build_pruned_unet
+from src.pruning.rebuild import build_pruned_unet, load_full_pruned_model
 from src.utils.config import load_config
 from src.utils.paths import get_paths
 from src.utils.wandb_utils import setup_wandb
@@ -23,6 +289,7 @@ from src.utils.wandb_utils import setup_wandb
 # TRAINING PIPELINE
 # ------------------------------------------------------------
 def train_model(cfg=None):
+
     # ============================================================
     # --- LOAD CONFIGURATION ---
     # ============================================================
@@ -34,13 +301,13 @@ def train_model(cfg=None):
     paths = get_paths(cfg, config_path)
     paths.save_config_snapshot()
 
-    exp_cfg = cfg["experiment"]
+    exp_cfg   = cfg["experiment"]
     train_cfg = cfg["train"]
 
     phase = train_cfg["phase"].lower()
     valid_phases = ["training", "retraining"]
     if phase not in valid_phases:
-        raise ValueError(f"❌ Invalid training phase '{phase}'. Must be one of: {valid_phases}")
+        raise ValueError(f"❌ Invalid training phase '{phase}'. Must be: {valid_phases}")
 
     print(f"🚀 Starting {phase} for experiment {exp_cfg['experiment_name']} ({exp_cfg['model_name']})")
 
@@ -50,30 +317,34 @@ def train_model(cfg=None):
     # ============================================================
     device = torch.device(exp_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
 
-    model_cfg = train_cfg["model"]
-    params = train_cfg["parameters"]
-    batch_size = train_cfg["batch_size"]
-    val_ratio = train_cfg["val_ratio"]
-    num_slices_per_volume = train_cfg["num_slices_per_volume"]
+    params      = train_cfg["parameters"]
+    model_cfg   = train_cfg["model"]
+    batch_size  = train_cfg["batch_size"]
+    val_ratio   = train_cfg["val_ratio"]
+    num_slices  = train_cfg["num_slices_per_volume"]
 
-    lr = float(params["learning_rate"])
-    epochs = params["num_epochs"]
-    save_interval = params["save_interval"]
-    loss_fn_name = params["loss_function"]
+    lr          = float(params["learning_rate"])
+    epochs      = params["num_epochs"]
+    save_int    = params["save_interval"]
+    loss_name   = params["loss_function"]
 
-    in_ch = model_cfg["in_channels"]
+    in_ch  = model_cfg["in_channels"]
     out_ch = model_cfg["out_channels"]
 
     # ============================================================
     # --- INITIALIZE WANDB ---
     # ============================================================
     run = setup_wandb(cfg, job_type="training")
-    wandb.watch_called = False  # ensure no duplicate hooks
+    wandb.watch_called = False
+
 
     # ============================================================
     # --- BUILD MODEL ---
     # ============================================================
     if phase == "retraining":
+        # -----------------------------
+        # Load pruned architecture
+        # -----------------------------
         meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
         if not meta_path.exists():
             raise FileNotFoundError(f"❌ Expected pruning metadata not found: {meta_path}")
@@ -81,25 +352,37 @@ def train_model(cfg=None):
         with open(meta_path, "r") as f:
             meta = json.load(f)
 
-        enc_features = meta["enc_features"]
-        dec_features = meta["dec_features"]
-        bottleneck_out = meta["bottleneck_out"]
+        # -----------------------------
+        # Load FULL pruned & rewind-weighted model
+        # -----------------------------
+        print("🧠 Loading FULL pruned model (for retraining)...")
 
-        # print(f"🧠 Rebuilding pruned UNet → enc={enc_features}, dec={dec_features}, bottleneck={bottleneck_out}")
-        base_model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
-        model = build_pruned_unet(base_model, enc_features, dec_features, bottleneck_out).to(device)
+        model = load_full_pruned_model(
+            meta          = meta,
+            ckpt_path     = paths.pruned_model,   # <- pruned or rewinded weights here
+            in_ch         = in_ch,
+            out_ch        = out_ch,
+            device        = device
+        )
+
     else:
-        # print(f"🧠 Building baseline UNet → features {model_cfg['features']}")
-        model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=model_cfg["features"]).to(device)
+        # -----------------------------
+        # Baseline training
+        # -----------------------------
+        model = UNet(
+            in_ch=in_ch,
+            out_ch=out_ch,
+            enc_features=model_cfg["features"]
+        ).to(device)
 
     wandb.watch(model, log="all")
+
 
     # ============================================================
     # --- DATA & OPTIMIZATION SETUP ---
     # ============================================================
     save_dir = paths.train_save_dir
     paths.ensure_dir(save_dir)
-    # print(f"📂 Saving training outputs to: {save_dir}")
 
     train_loader, val_loader, augmentation_summary = get_train_val_loaders(
         img_dir=paths.train_dir,
@@ -107,107 +390,120 @@ def train_model(cfg=None):
         batch_size=batch_size,
         val_ratio=val_ratio,
         shuffle=True,
-        num_slices_per_volume=num_slices_per_volume
+        num_slices_per_volume=num_slices
     )
 
     print(f"✅ Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
-    criterion = get_loss_function(loss_fn_name)
+    criterion = get_loss_function(loss_name)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
     # scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=3)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
-
     metrics_log = {"epoch": [], "train_loss": [], "val_dice": [], "val_iou": [], "lr": []}
+
 
     # ============================================================
     # --- TRAINING LOOP ---
     # ============================================================
     print(f"\n🚦 Training for {epochs} epochs...\n")
+
     for epoch in range(epochs):
+
+        # -------------------------
+        # Training
+        # -------------------------
         model.train()
         epoch_loss = 0.0
 
-        for batch_idx, (imgs, masks) in tqdm(
-            enumerate(train_loader),
-            total=len(train_loader),
+        for imgs, masks in tqdm(
+            train_loader,
             desc=f"Epoch {epoch+1}/{epochs}",
             ncols=100,
         ):
             imgs, masks = imgs.to(device), masks.to(device, dtype=torch.long)
+
             optimizer.zero_grad()
+
             preds = model(imgs)
             loss = criterion(preds, masks)
+
             loss.backward()
             optimizer.step()
+
             epoch_loss += loss.item()
 
         avg_loss = epoch_loss / len(train_loader)
 
-        # --- Validation ---
+        # -------------------------
+        # Validation
+        # -------------------------
         model.eval()
         val_dice, val_iou = 0.0, 0.0
+
         with torch.no_grad():
             for imgs, masks in val_loader:
                 imgs, masks = imgs.to(device), masks.to(device, dtype=torch.long)
                 preds = model(imgs)
+
                 val_dice += dice_score(preds, masks, num_classes=out_ch)
-                val_iou += iou_score(preds, masks, num_classes=out_ch)
+                val_iou  += iou_score(preds, masks, num_classes=out_ch)
 
         val_dice /= len(val_loader)
-        val_iou /= len(val_loader)
+        val_iou  /= len(val_loader)
 
-        # scheduler.step(val_dice)
         scheduler.step()
-        current_lr = optimizer.param_groups[0]["lr"]
+        curr_lr = optimizer.param_groups[0]["lr"]
 
-        print(f"📈 Epoch {epoch+1:02d}: Loss={avg_loss:.4f}, Dice={val_dice:.4f}, IoU={val_iou:.4f}, LR={current_lr:.6e}")
+        print(f"📈 Epoch {epoch+1:02d}: Loss={avg_loss:.4f}, Dice={val_dice:.4f}, IoU={val_iou:.4f}, LR={curr_lr:.6e}")
+
+        # -------------------------
+        # Logging
+        # -------------------------
+        wandb.log({
+            "epoch": epoch + 1,
+            "train_loss": avg_loss,
+            "val_dice": val_dice,
+            "val_iou":  val_iou,
+            "lr": curr_lr,
+        })
 
         metrics_log["epoch"].append(epoch + 1)
         metrics_log["train_loss"].append(avg_loss)
         metrics_log["val_dice"].append(val_dice)
         metrics_log["val_iou"].append(val_iou)
-        metrics_log["lr"].append(current_lr)
+        metrics_log["lr"].append(curr_lr)
 
-        # ✅ Log to W&B
-        wandb.log({
-            "epoch": epoch + 1,
-            "train_loss": avg_loss,
-            "val_dice": val_dice,
-            "val_iou": val_iou,
-            "lr": current_lr,
-        })
-
-        # --- Save checkpoint ---
-        if (epoch + 1) % save_interval == 0 or (epoch + 1) == epochs:
+        # -------------------------
+        # Save checkpoint
+        # -------------------------
+        if (epoch + 1) % save_int == 0 or (epoch + 1) == epochs:
             ckpt_path = os.path.join(save_dir, f"epoch_{epoch+1}.pth")
             torch.save(model.state_dict(), ckpt_path)
-            # print(f"💾 Saved checkpoint: {ckpt_path}")
             wandb.save(ckpt_path)
 
     # ============================================================
-    # --- SAVE METRICS & PLOTS ---
+    # --- SAVE FINAL MODEL ---
     # ============================================================
     final_model_path = os.path.join(save_dir, "final_model.pth")
     torch.save(model.state_dict(), final_model_path)
     print(f"💾 Saved final model: {final_model_path}")
     wandb.save(final_model_path)
 
-    #print("\n📊 Profiling model FLOPs & inference speed...")
 
-    # Input shape for 2D UNet on ACDC slices
-    input_shape = (1, in_ch, 256, 256)
-
+    # ============================================================
+    # --- MODEL PROFILING ---
+    # ============================================================
     model.eval()
     with torch.no_grad():
-        flops, params = compute_model_flops(model, input_shape)
-        infer_ms = compute_inference_time(model, input_shape)
+        flops, params = compute_model_flops(model, (1, in_ch, 256, 256))
+        infer_ms     = compute_inference_time(model, (1, in_ch, 256, 256))
 
     print(f"🧮 Params: {params/1e6:.2f} M")
-    print(f"⚙️ FLOPs: {flops/1e9:.2f} GFLOPs")
+    print(f"⚙️ FLOPs:  {flops/1e9:.2f} GFLOPs")
     print(f"⚡ Inference time: {infer_ms:.2f} ms")
 
-    # Log to W&B
     wandb.log({
         "params_m": params / 1e6,
         "flops_g": flops / 1e9,
@@ -215,15 +511,16 @@ def train_model(cfg=None):
     })
 
 
-
-
+    # ============================================================
+    # --- SAVE TRAINING CURVES ---
+    # ============================================================
     with open(os.path.join(save_dir, "metrics.json"), "w") as f:
         json.dump(metrics_log, f, indent=4)
 
     plt.figure()
     plt.plot(metrics_log["epoch"], metrics_log["train_loss"], label="Train Loss")
     plt.plot(metrics_log["epoch"], metrics_log["val_dice"], label="Val Dice")
-    plt.plot(metrics_log["epoch"], metrics_log["val_iou"], label="Val IoU")
+    plt.plot(metrics_log["epoch"], metrics_log["val_iou"],  label="Val IoU")
     plt.xlabel("Epoch")
     plt.ylabel("Value")
     plt.title(f"Training Progress ({phase})")
@@ -234,30 +531,35 @@ def train_model(cfg=None):
     plt.close()
     wandb.log({"training_curve": wandb.Image(plot_path)})
 
+    # ============================================================
+    # --- SAVE TRAINING SUMMARY ---
+    # ============================================================
     summary = {
-        "model_name": exp_cfg["model_name"],
-        "experiment": exp_cfg["experiment_name"],
-        "phase": phase,
-        "epochs": epochs,
+        "model_name":  exp_cfg["model_name"],
+        "experiment":  exp_cfg["experiment_name"],
+        "phase":       phase,
+        "epochs":      epochs,
         "learning_rate": lr,
-        "batch_size": batch_size,
-        "device": str(device),
-        "params_m": params / 1e6,
-        "flops_g": flops / 1e9,
+        "batch_size":  batch_size,
+        "device":      str(device),
+        "params_m":    params / 1e6,
+        "flops_g":     flops / 1e9,
         "inference_ms": infer_ms,
         "final_train_loss": float(metrics_log["train_loss"][-1]),
-        "final_val_dice": float(metrics_log["val_dice"][-1]),
-        "final_val_iou": float(metrics_log["val_iou"][-1]),
+        "final_val_dice":  float(metrics_log["val_dice"][-1]),
+        "final_val_iou":   float(metrics_log["val_iou"][-1]),
         "augmentation": {
             "library": "torchio",
             "transforms": augmentation_summary if augmentation_summary else "none"
         }
     }
+
     with open(os.path.join(save_dir, "train_summary.json"), "w") as f:
         json.dump(summary, f, indent=4)
 
     print("✅ Training complete.")
     run.finish()
+
 
 
 if __name__ == "__main__":

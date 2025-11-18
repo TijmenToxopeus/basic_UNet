@@ -275,3 +275,16 @@ def rebuild_pruned_unet(model, masks, save_path=None):
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model
+
+
+def load_full_pruned_model(meta, ckpt_path, in_ch, out_ch, device):
+    enc_features = meta["enc_features"]
+    dec_features = meta["dec_features"]
+    bottleneck_out = meta["bottleneck_out"]
+
+    base = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
+    model = build_pruned_unet(base, enc_features, dec_features, bottleneck_out).to(device)
+
+    state = torch.load(ckpt_path, map_location=device)
+    model.load_state_dict(state)
+    return model
