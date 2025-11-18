@@ -3,7 +3,7 @@
 # ===============================================================
 
 experiment:
-  experiment_name: "exp31_add_cropping"
+  experiment_name: "exp32_added_rewind"
   model_name: "UNet_ACDC"
   seed: 42
   device: "cuda"
@@ -14,7 +14,7 @@ experiment:
 train:
   phase: "training"               # "training" or "retraining"
   val_ratio: 0.2
-  batch_size: 16
+  batch_size: 32
   num_slices_per_volume: null
   model:
     in_channels: 1
@@ -22,7 +22,7 @@ train:
     features: [64, 128, 256, 512]
   parameters:
     learning_rate: 1e-3
-    num_epochs: 15
+    num_epochs: 25
     save_interval: 20
     loss_function: "ce_dice"
   paths:
@@ -48,7 +48,8 @@ evaluation:
 # ---------------------------------------------------------------
 pruning:
   method: "l1_norm"
-  reinitialize: true
+  reinitialize_weights: "random"
+  #rewind_ckpt: "epoch_20.pth"
   ckpt_path:
     subfolder: "baseline"           # where baseline model is stored
     ckpt_name: "final_model.pth"
@@ -64,10 +65,10 @@ pruning:
       encoders.3: 0.2
       # encoders.4: 0.3
       # encoders.5: 0.3
-      bottleneck: 0.1
-      decoders.1: 0.3
-      decoders.3: 0.2
-      decoders.5: 0.0
+      bottleneck: 0.0
+      decoders.1: 0.2
+      decoders.3: 0.15
+      decoders.5: 0.1
       decoders.7: 0.0
       # decoders.9: 0.05
       # decoders.11: 0.1

@@ -79,6 +79,37 @@ class ExperimentPaths:
             / ckpt_cfg.get("ckpt_name", "final_model.pth")
         )
 
+        rewind_folder = (
+            self.base_dir
+            / ckpt_cfg.get("subfolder", "baseline")
+            / "training"
+        )
+
+        # ============================================================
+        # REWIND CHECKPOINT (used ONLY during pruning with rewind)
+        # ============================================================
+        self.rewind_ckpt = None   # <--- SAFE DEFAULT
+
+        use_rewind = (
+            prune_cfg.get("reinitialize_weights", None) == "rewind"
+        )
+
+        if use_rewind:
+            ckpt_name = ckpt_cfg.get("rewind_ckpt", None)
+
+            if ckpt_name:
+                # User explicitly provided filename
+                self.rewind_ckpt = rewind_folder / ckpt_name
+
+            else:
+                # Auto-detect first epoch_*.pth file
+                epoch_files = sorted(rewind_folder.glob("epoch*.pth"))
+
+                if len(epoch_files) == 0:
+                    self.rewind_ckpt = None
+                else:
+                    self.rewind_ckpt = epoch_files[0]
+
         # Main pruning directories (not created until pruning)
         self.pruned_dir = self.base_dir / save_cfg.get("subfolder", "pruned") / self.suffix
         self.pruned_model_dir = self.pruned_dir / "pruned_model"
@@ -112,9 +143,11 @@ class ExperimentPaths:
             suffix = "no_prune"
 
         # Add indicator if weights are reinitialized after pruning
-        if prune_cfg.get("reinitialize", False):
-            suffix += "_reinit"
-
+        mode = prune_cfg.get("reinitialize_weights", None)
+        if mode == "random":
+            suffix += "_random"
+        elif mode == "rewind":
+            suffix += "_rewind"
         return suffix
 
     # ------------------------------------------------------------

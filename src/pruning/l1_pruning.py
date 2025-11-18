@@ -244,16 +244,38 @@ def run_pruning(cfg=None):
     masks = get_pruning_masks_blockwise(model, norms, block_ratios=block_ratios, default_ratio=default_ratio)
     print("✅ Pruning masks generated.\n")
 
+
+
     # ============================================================
     # --- REBUILD PRUNED MODEL ---
     # ============================================================
     paths.ensure_dir(paths.pruned_model_dir)
-    pruned_model = rebuild_pruned_unet(model, masks, save_path=paths.pruned_model)
+
 
     # ============================================================
     # --- OPTIONAL: REINITIALIZE PRUNED MODEL ---
     # ============================================================
-    if pruning_cfg.get("reinitialize", False):
+    if pruning_cfg.get("reinitialize_weights") == "rewind":
+        print("🔄 Reinitializing pruned model with rewind weights...")
+        rewind_ckpt = paths.rewind_ckpt
+
+        if not rewind_ckpt.exists():
+            raise FileNotFoundError(f"❌ Rewind checkpoint not found at {rewind_ckpt}")
+        
+        rewind_model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
+        state = torch.load(rewind_ckpt, map_location=device)
+        rewind_model.load_state_dict(state)
+        rewind_model.eval()
+        pruned_model = rebuild_pruned_unet(rewind_model, masks, save_path=paths.pruned_model)
+
+    else:
+        print("🔄 Reinitializing pruned model with current weights...")
+        pruned_model = rebuild_pruned_unet(model, masks, save_path=paths.pruned_model)
+
+    # ============================================================
+    # --- OPTIONAL: REINITIALIZE PRUNED MODEL ---
+    # ============================================================
+    if pruning_cfg.get("reinitialize_weights") == "random":
         print("🔄 Reinitializing pruned model with random weights...")
 
         # ---- Compute global pre-reinit stats ----
