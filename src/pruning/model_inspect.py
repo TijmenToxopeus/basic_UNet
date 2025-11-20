@@ -140,30 +140,37 @@ def model_to_dataframe_with_l1(
     l1_stats: dict,
     block_ratios: dict = None,
     post_prune_ratios: dict = None,
-    remove_nan_layers: bool = True
+    remove_nan_layers: bool = False
 ) -> pd.DataFrame:
     """
-    Build a DataFrame summarizing all convolutional layers in a UNet-like model.
-
-    Args:
-        model (nn.Module): model to inspect
-        l1_stats (dict): per-layer L1 statistics
-        block_ratios (dict, optional): {block_name: prune_ratio}
-        post_prune_ratios (dict, optional): {layer_name: actual_prune_ratio}
-        remove_nan_layers (bool): remove non-conv layers
-
-    Returns:
-        pd.DataFrame
+    Build a DataFrame summarizing all convolutional + batchnorm layers
+    in a UNet-like model.
     """
+
     layers = []
+
     for name, layer in model.named_modules():
         layer_type = layer.__class__.__name__
 
-        if isinstance(layer, (nn.Conv2d, nn.ConvTranspose2d)):
-            shape = tuple(layer.weight.shape)
+        # Include Conv2d, ConvTranspose2d, BatchNorm2d
+        if isinstance(layer, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
+
+            # Extract shape
+            shape = None
+            if hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
+                shape = tuple(layer.weight.shape)
+
             num_params = sum(p.numel() for p in layer.parameters())
-            in_ch, out_ch = layer.in_channels, layer.out_channels
+
+            # Channels (BN uses num_features)
+            if isinstance(layer, nn.BatchNorm2d):
+                in_ch = out_ch = layer.num_features
+            else:
+                in_ch = layer.in_channels
+                out_ch = layer.out_channels
+
             stats = l1_stats.get(name, {})
+
             layers.append({
                 "Layer": name,
                 "Type": layer_type,
@@ -176,16 +183,20 @@ def model_to_dataframe_with_l1(
 
     df = pd.DataFrame(layers)
 
-    # Sort: encoders → bottleneck → decoders
+    # Sort in UNet structure:
     enc = df[df["Layer"].str.startswith("encoders")].copy()
     bott = df[df["Layer"].str.startswith("bottleneck")].copy()
     dec = df[df["Layer"].str.startswith("decoders") | df["Layer"].str.startswith("final_conv")].copy()
+
     df_sorted = pd.concat([enc, bott, dec], ignore_index=True)
 
+    # Drop or keep NaN rows
     if remove_nan_layers:
         df_sorted = df_sorted.dropna(subset=["Mean L1"]).reset_index(drop=True)
+    else:
+        df_sorted = df_sorted.reset_index(drop=True)
 
-    # Add ratios
+    # Add block ratios
     df_sorted["Block Ratio"] = None
     df_sorted["Post-Prune Ratio"] = None
 
@@ -199,6 +210,7 @@ def model_to_dataframe_with_l1(
             df_sorted.loc[df_sorted["Layer"] == layer_name, "Post-Prune Ratio"] = ratio
 
     return df_sorted
+
 
 
 # -----------------------------------------------------------------------------
