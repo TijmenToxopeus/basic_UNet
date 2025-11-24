@@ -132,6 +132,7 @@ def copy_pruned_weights(original, pruned, masks, verbose=True):
     Includes shape consistency checks and detailed logging.
     """
     for name, mod in original.named_modules():
+        print(f"name: {name} , mod: {mod}")
         # Skip non-conv layers, unmasked layers, or final conv
         if not isinstance(mod, nn.Conv2d) or name not in masks or "final_conv" in name:
             continue
@@ -170,6 +171,123 @@ def copy_pruned_weights(original, pruned, masks, verbose=True):
 
     # print("🔧 Weight copying completed.")
     return pruned
+
+
+
+
+def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verbose=True):
+    """
+    Copies weights from the original UNet to the newly pruned UNet.
+    
+    Behavior:
+    - If prunable_layers[name] == True:
+          Apply pruning logic (slice output channels using masks[name])
+    - If prunable_layers[name] == False:
+          Copy weights from original → pruned
+          But auto-correct shapes if input/output channels changed
+    """
+
+    orig_dict = original.state_dict()
+    pruned_dict = pruned.state_dict()
+    new_state = {}
+
+    for key, pruned_tensor in pruned_dict.items():
+
+        if key not in orig_dict:
+            if verbose:
+                print(f"⚠️ {key} not found in original, keeping default")
+            new_state[key] = pruned_tensor
+            continue
+
+        orig_tensor = orig_dict[key]
+
+        # Module name = everything before ".weight" or ".bias"
+        module_name = key.rsplit(".", 1)[0]
+
+        # 1️⃣ CASE A — LAYER IS PRUNABLE
+        if module_name in prunable_layers and prunable_layers[module_name]:
+
+            mask = masks[module_name]
+
+            # Slice output channels (always dimension 0)
+            sliced = orig_tensor[mask]
+
+            # Slice input channels (dimension 1) if there is a parent mask
+            parent = find_parent_layer(module_name)
+            if parent in masks and orig_tensor.ndim >= 3:
+                parent_mask = masks[parent]
+                sliced = sliced[:, parent_mask, ...]
+
+            # Final safety: match pruned model shape
+            if sliced.shape != pruned_tensor.shape:
+                if verbose:
+                    print(f"⚠️ Shape mismatch in {key}, adjusting…")
+                # Resize by slicing or padding
+                sliced = resize_tensor(sliced, pruned_tensor.shape)
+
+            new_state[key] = sliced.clone()
+
+            if verbose:
+                print(f"✂️ Pruned copy → {key}: {tuple(sliced.shape)}")
+
+        # 2️⃣ CASE B — LAYER IS NON-PRUNABLE
+        else:
+            # Copy directly, but shapes might differ
+            tensor = orig_tensor.clone()
+
+            if tensor.shape != pruned_tensor.shape:
+
+                if verbose:
+                    print(f"🔧 Correcting shape for {key}: {tensor.shape} → {pruned_tensor.shape}")
+
+                tensor = resize_tensor(tensor, pruned_tensor.shape)
+
+            new_state[key] = tensor
+
+            if verbose:
+                print(f"📥 Copied non-pruned layer → {key}: {tuple(new_state[key].shape)}")
+
+
+    # Load new full state
+    pruned.load_state_dict(new_state, strict=False)
+
+    if verbose:
+        print("\n✅ Weight reconstruction completed.\n")
+
+    return pruned
+
+
+def find_parent_layer(name):
+    """Finds the previous block in UNet based on naming pattern."""
+    
+    parts = name.split(".")
+    
+    # example: encoders.2.double_conv.1 → parent is encoders.2.double_conv.0
+    if parts[-1].isdigit():
+        # inside double_conv block
+        idx = int(parts[-1])
+        if idx > 0:
+            parts[-1] = str(idx - 1)
+            return ".".join(parts)
+
+    # fallback: no parent found
+    return None
+
+
+def resize_tensor(t, target_shape):
+    """
+    Resize a tensor to target_shape by:
+    - slicing if too large
+    - zero-padding if too small
+    Works for Conv2d, ConvTranspose2d, BatchNorm, Linear, etc.
+    """
+    import numpy as np
+    out = torch.zeros(target_shape, dtype=t.dtype, device=t.device)
+
+    slices = tuple(slice(0, min(s, ts)) for s, ts in zip(t.shape, target_shape))
+    out[slices] = t[slices]
+    return out
+
 
 
 def plot_unet_schematic(enc_features, dec_features, bottleneck_out, 
@@ -243,7 +361,7 @@ def plot_unet_schematic(enc_features, dec_features, bottleneck_out,
 
 
 
-def rebuild_pruned_unet(model, masks, save_path=None):
+def rebuild_pruned_unet(model, masks, prunable_layers, save_path=None):
     """Main orchestrator."""
 
     print("🔧 Rebuilding pruned UNet architecture...")
@@ -251,7 +369,8 @@ def rebuild_pruned_unet(model, masks, save_path=None):
     enc_features, bottleneck_out, dec_features = get_pruned_feature_sizes(model, masks)
 
     pruned_model = build_pruned_unet(model, enc_features, dec_features=dec_features, bottleneck_out=bottleneck_out)
-    pruned_model = copy_pruned_weights(model, pruned_model, masks)
+    #pruned_model = copy_pruned_weights(model, pruned_model, masks)
+    pruned_model = copy_all_weights_with_pruning(model, pruned_model, masks, prunable_layers, verbose=True)
 
     plot_unet_schematic(enc_features, dec_features, bottleneck_out, 
                         in_ch=1, out_ch=4, figsize=(10, 6), title="U-Net Structure")
