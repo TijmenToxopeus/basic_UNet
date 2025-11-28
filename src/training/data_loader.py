@@ -212,45 +212,6 @@ def get_train_val_loaders(
     return train_loader, val_loader, augmentation_summary
 
 
-
-# def get_train_val_loaders(
-#     img_dir,
-#     lbl_dir,
-#     batch_size=2,
-#     val_ratio=0.2,
-#     shuffle=True,
-#     seed=42,
-#     num_slices_per_volume=20
-# ):
-#     """
-#     Returns train and validation DataLoaders.
-#     """
-#     dataset = SegmentationDataset(
-#         img_dir,
-#         lbl_dir,
-#         augment=True,
-#         num_slices_per_volume=num_slices_per_volume
-#     )
-
-#     val_size = int(len(dataset) * val_ratio)
-#     train_size = len(dataset) - val_size
-#     generator = torch.Generator().manual_seed(seed)
-
-#     train_ds, val_ds = random_split(dataset, [train_size, val_size], generator=generator)
-#     val_ds.dataset.augment = False
-#     val_ds.dataset.torchio_transform = None  # disable augmentations for val
-
-#     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
-#     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-
-#         # --- Summarize augmentation pipeline (for logging) ---
-#     augmentation_summary = None
-#     if hasattr(dataset, "torchio_transform") and dataset.torchio_transform is not None:
-#         augmentation_summary = summarize_torchio_pipeline(dataset.torchio_transform)
-
-#     return train_loader, val_loader, augmentation_summary
-
-
 # ============================================================
 # --- Debug / Quick Test ---
 # ============================================================
