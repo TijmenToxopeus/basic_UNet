@@ -159,8 +159,8 @@ The masks contain **integer class labels** (not RGB colors):
 <td><strong>Overlay</strong></td>
 </tr>
 <tr>
-<td><img src="examples/patient001_frame01.png" width="300"/></td>
-<td><img src="examples/patient001_frame01_ol.png" width="300"/></td>
+<td><img src="data_examples/patient001_frame01.png" width="300"/></td>
+<td><img src="data_examples/patient001_frame01_ol.png" width="300"/></td>
 </tr>
 </table>
 
@@ -171,8 +171,8 @@ The masks contain **integer class labels** (not RGB colors):
 <td><strong>Overlay</strong></td>
 </tr>
 <tr>
-<td><img src="examples/patient001_frame12.png" width="300"/></td>
-<td><img src="examples/patient001_frame12_ol.png" width="300"/></td>
+<td><img src="data_examples/patient001_frame12.png" width="300"/></td>
+<td><img src="data_examples/patient001_frame12_ol.png" width="300"/></td>
 </tr>
 </table>
 
