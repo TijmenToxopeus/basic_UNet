@@ -81,27 +81,24 @@ A lightweight and modular **2D U-Net framework** for medical image segmentation,
             run_full_exp.py        # Automates full experiment runs
 
         pruning/
-            l1_pruning.py          # L1 mask generation + pruning logic
-            model_inspect.py       # Inspect shapes, channels, parameters
-            rebuild.py             # Rebuild pruned UNet
-            visualize_pruning.py   # Mask visualization tools
-            l1_analysis/           # Histograms, stats, notebooks
+            l1_pruning.py          # Pruning pipeline (combines all pruning scripts)
+            model_inspect.py       # L1 norm & mask functions + inspect shapes, features, distributions
+            rebuild.py             # Rebuild pruned UNet functions
+            l1_analysis/           # Histograms of l1 norm distributions between layers
 
         training/
-            data_loader.py         # ACDC dataset handling
-            train.py               # Training loop
-            eval.py                # Evaluation loop
-            metrics.py             # Dice, IoU, etc.
-            loss.py                # Loss functions
+            data_loader.py         # ACDC dataset handling (preprocessing + Dataset + Dataloader)
+            train.py               # Training pipeline
+            eval.py                # Evaluation pipeline
+            metrics.py             # Dice, IoU, flops, inference time
+            loss.py                # Loss functions and combinations
 
         utils/
             config.py              # YAML loader + overrides
             paths.py               # Experiment folder management
-            checkpoint.py          # Saving/loading checkpoints
-            wandb_utils.py         # Optional logging to W&B
+            wandb_utils.py         # W&B logging
 
         config.yaml                # Main configuration file
-        main.py                    # Optional runner
 
 ---
 
@@ -119,15 +116,73 @@ Requires:
 
 # 📚 Dataset
 
-The framework expects simple 2D image–mask pairs. For ACDC, structure like:
+This framework uses **2D slices extracted from 3D NIfTI volumes (`.nii.gz`)**, such as those provided by the **ACDC cardiac MRI dataset**.  
+Each patient folder contains end-diastolic (ED) and end-systolic (ES) frames together with corresponding ground-truth masks.
 
+---
+
+## 📂 Example Patient Folder (ACDC)
+    patient001/
+        patient001_4d.nii.gz # Full 4D cine MRI: (H, W, slices, time)
+        patient001_frame01.nii.gz # ED frame (raw image)
+        patient001_frame01_gt.nii.gz # ED segmentation mask
+        patient001_frame12.nii.gz # ES frame (raw image)
+        patient001_frame12_gt.nii.gz # ES segmentation mask
+        MANDATORY_CITATION # Required citation file
+        Info # Metadata
+  
+---
+
+## 📘 Meaning of Each File
+
+| File | Description |
+|------|-------------|
+| `patient001_4d.nii.gz` | Complete 4D cine stack (not always used directly) |
+| `patient001_frame01.nii.gz` | End-diastolic (ED) volume |
+| `patient001_frame01_gt.nii.gz` | ED ground-truth mask |
+| `patient001_frame12.nii.gz` | End-systolic (ES) volume |
+| `patient001_frame12_gt.nii.gz` | ES ground-truth mask |
+
+The masks contain **integer class labels** (not RGB colors):
+- 0 → background  
+- 1 → RV  
+- 2 → myocardium  
+- 3 → LV  
+
+---
+## 🖼️ Example (ED and ES Slices)
+
+### End-Diastolic (ED)
+<table>
+<tr>
+<td><strong>Image</strong></td>
+<td><strong>Overlay</strong></td>
+</tr>
+<tr>
+<td><img src="examples/patient001_frame01.png" width="300"/></td>
+<td><img src="examples/patient001_frame01_ol.png" width="300"/></td>
+</tr>
+</table>
+
+### End-Systolic (ES)
+<table>
+<tr>
+<td><strong>Image</strong></td>
+<td><strong>Overlay</strong></td>
+</tr>
+<tr>
+<td><img src="examples/patient001_frame12.png" width="300"/></td>
+<td><img src="examples/patient001_frame12_ol.png" width="300"/></td>
+</tr>
+</table>
+
+
+## 🔧 Preprocessing Into 2D Slices
+
+The training pipeline expects **2D images and masks**, typically exported into:
     data/
         images/
         masks/
-
-Specify paths in `config.yaml`.
-
----
 
 # ⚙️ Configuration System
 
