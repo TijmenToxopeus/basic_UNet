@@ -320,10 +320,6 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 | VRAM | **12177.8MB** |
 | Dice (mean) | **0.9408±0.0076** |
 | IoU (mean) | **IoU=0.8914±0.0127** |
-| LV Dice | **XX.XX** |
-| RV Dice | **XX.XX** |
-| Myocardium Dice | **XX.XX** |
-
 
 ---
 
@@ -386,7 +382,7 @@ reinitialize_weights: null
 
 
 <p align="center">
-  <img src="results/pruned/eval_before_retrain.png" width="600"/>
+  <img src="data_examples/media_images_sample_prediction_2_pruned_eval.png" width="600"/>
 </p>
 
 ---
@@ -395,7 +391,7 @@ reinitialize_weights: null
 
 ### 📈 Retraining Curve
 <p align="center">
-  <img src="results/baseline/training_curve.png" width="600"/>
+  <img src="data_examples/media_images_retraining_curve_501_780f503367d59f6ec9ca.png" width="600"/>
 </p>
 
 ### 📊 Retraining Validation Metrics
@@ -406,9 +402,6 @@ reinitialize_weights: null
 | VRAM | **12174.2MB** |
 | Dice (mean) | **0.9490±0.0048** |
 | IoU (mean) | **IoU=0.9052±0.0083** |
-| LV Dice | **XX.XX** |
-| RV Dice | **XX.XX** |
-| Myocardium Dice | **XX.XX** |
 
 ---
 
@@ -422,7 +415,7 @@ reinitialize_weights: null
 
 
 <p align="center">
-  <img src="results/pruned/eval_before_retrain.png" width="600"/>
+  <img src="data_examples/media_images_sample_prediction_0_retrained_pruned_eval.png" width="600"/>
 </p>
 
 ---
