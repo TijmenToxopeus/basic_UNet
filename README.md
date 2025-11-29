@@ -1,75 +1,75 @@
-# 🧩 basic_UNet
+# basic_UNet
 
 A lightweight and modular **2D U-Net framework** for medical image segmentation, with a full pipeline for **training, evaluation, structured pruning, rewinding, model inspection, and experiment automation**. Developed and tested on the **ACDC cardiac MRI dataset**, but compatible with any 2D segmentation dataset.
 
 ---
 
-# 📌 Table of Contents
-- [✨ Features](#-features)
-- [📁 Project Structure](#-project-structure)
-- [📦 Installation](#-installation)
-- [📚 Dataset](#-dataset)
-- [⚙️ Configuration System](#️-configuration-system)
-- [🚀 Baseline Training](#-baseline-training)
-- [🎯 Evaluation](#-evaluation)
-- [✂️ Structured Pruning Pipeline](#️-structured-pruning-pipeline)
+#  Table of Contents
+- [ Features](#-features)
+- [ Project Structure](#-project-structure)
+- [ Installation](#-installation)
+- [ Dataset](#-dataset)
+- [ Configuration System](#️-configuration-system)
+- [ Baseline Training](#-baseline-training)
+- [ Evaluation](#-evaluation)
+- [ Structured Pruning Pipeline](#️-structured-pruning-pipeline)
   - [L1 block-wise pruning](#l1-block-wise-pruning)
   - [Rewinding options](#rewinding-options)
   - [Rebuilding a pruned UNet](#rebuilding-a-pruned-unet)
-- [🧪 Model Inspection & L1 Analysis](#-model-inspection--l1-analysis)
-- [📊 Experiment Logging](#-experiment-logging)
-- [🧵 Full Experiment Runner](#-full-experiment-runner)
-- [📈 Example Results](#-example-results)
-- [🛣️ Roadmap](#️-roadmap)
-- [🧠 Author](#-author)
+- [ Model Inspection & L1 Analysis](#-model-inspection--l1-analysis)
+- [ Experiment Logging](#-experiment-logging)
+- [ Full Experiment Runner](#-full-experiment-runner)
+- [ Example Results](#-example-results)
+- [ Roadmap](#️-roadmap)
+- [ Author](#-author)
 
 ---
 
-# ✨ Features
+# Features
 
-### 🧠 UNet Architecture
+### UNet Architecture
 - Clean, modular UNet defined in `src/models/unet.py`
 - Easily modifiable architecture (depth, channels, features)
 
-### 🚀 Training & Evaluation
+### Training & Evaluation
 - Full baseline training pipeline (`src/pipeline/baseline.py`)
 - Dice, IoU, and loss logging
 - Learning rate scheduling
 - Automatic checkpointing
 - Evaluation pipeline (`src/training/eval.py`)
 
-### ✂️ Structured L1 Pruning (Block-wise)
+### Structured L1 Pruning (Block-wise)
 - L1 filter norm computation
 - Block-wise pruning ratios (e.g., `decoders.1: 0.3`)
 - Pruning masks stored as JSON
 - Rebuild a smaller pruned UNet automatically
 
-### 🔄 Weight Reinitialization Modes
+### Weight Reinitialization Modes
 - `none` → keep weights post-pruning
 - `random` → reinitialize pruned model from scratch
 - `rewind` → restore weights from early checkpoint
 
-### 📉 Model Inspection
+### Model Inspection
 - L1 histograms
 - Layer statistics
 - Channel shapes
 - Visualization tools
 
-### ⚙️ Dynamic Configuration System
+### Dynamic Configuration System
 - YAML config with structured training + pruning configuration
 - Runtime overrides (epochs, LR, pruning mode, ratios)
 - Automatic path generation via `utils/paths.py`
 
-### 🧪 Experiment Automation
+### Experiment Automation
 - `run_full_exp.py` runs a full sweep: `baseline → prune → retrain/evaluate → repeat for each mode`
 
-### 📈 Logging
+### Logging
 - Local logging (JSON, PNG, checkpoints)
 - W&B integration available
 
 ---
 
-# 📁 Project Structure
+# Project Structure
 
     src/
         models/
@@ -102,7 +102,7 @@ A lightweight and modular **2D U-Net framework** for medical image segmentation,
 
 ---
 
-# 📦 Installation
+# Installation
 
     git clone https://github.com/TijmenToxopeus/basic_UNet.git
     cd basic_UNet
@@ -114,14 +114,14 @@ Requires:
 
 ---
 
-# 📚 Dataset
+# Dataset
 
 This framework uses **2D slices extracted from 3D NIfTI volumes (`.nii.gz`)**, such as those provided by the **ACDC cardiac MRI dataset**.  
 Each patient folder contains end-diastolic (ED) and end-systolic (ES) frames together with corresponding ground-truth masks.
 
 ---
 
-## 📂 Example Patient Folder (ACDC)
+## Example Patient Folder (ACDC)
     patient001/
         patient001_4d.nii.gz # Full 4D cine MRI: (H, W, slices, time)
         patient001_frame01.nii.gz # ED frame (raw image)
@@ -133,7 +133,7 @@ Each patient folder contains end-diastolic (ED) and end-systolic (ES) frames tog
   
 ---
 
-## 📘 Meaning of Each File
+## Meaning of Each File
 
 | File | Description |
 |------|-------------|
@@ -150,7 +150,7 @@ The masks contain **integer class labels** (not RGB colors):
 - 3 → LV  
 
 ---
-## 🖼️ Example (ED and ES Slices)
+## Example (ED and ES Slices)
 
 ### End-Diastolic (ED)
 <table>
@@ -177,7 +177,7 @@ The masks contain **integer class labels** (not RGB colors):
 </table>
 
 
-## 🔧 Preprocessing
+## Preprocessing
 
 Because the UNet model is **2D**, while MRI volumes are **3D**, the preprocessing pipeline converts full 3D NIfTI volumes into clean, normalized, augmentable **2D slices** that can be fed into the network.  
 The preprocessing steps are as follows:
@@ -206,7 +206,7 @@ Every extracted 2D slice is resized to a fixed `256 × 256` resolution and norma
 5. **Train/Validation Split and Batching**  
 After preprocessing, the dataset is split into training and validation subsets, which are loaded in batches and fed to the training loop.
 
-# ⚙️ Configuration System
+# Configuration System
 
 All experiment settings are defined in a single central file:
 
@@ -235,7 +235,7 @@ Pipelines can override fields such as learning rate, number of epochs, pruning r
 
 ---
 
-# 🧱 Repository Pipelines Overview
+# Repository Pipelines Overview
 
 This repository consists of **two main pipelines**:
 
@@ -320,7 +320,7 @@ Evaluate again after retraining to measure pruning impact.
 
 ------
 
-# 📊 L1 Analysis & Model Inspection
+# L1 Analysis & Model Inspection
 
 Inspect L1 statistics and visualize pruning patterns:
 
@@ -339,7 +339,7 @@ Notebooks:
 - `l1_distributions.ipynb`
 - `pruning_notebook.ipynb`
 
-# 📊 Experiment Logging
+# Experiment Logging
 
 ### Local Logging (default)
 
@@ -361,7 +361,7 @@ Enable via:
 
 ---
 
-# 🧵 Full Experiment Runner
+# Full Experiment Runner
 
 Run the entire pipeline:
 
@@ -382,7 +382,7 @@ Each experiment automatically overrides the LR, epoch count, pruning ratios, and
 
 ---
 
-# 🧠 Author
+# Author
 
 **Tijmen Toxopeus**  
 Master’s student in Applied Physics (TU Delft)  
