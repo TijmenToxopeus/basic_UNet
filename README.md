@@ -177,18 +177,42 @@ The masks contain **integer class labels** (not RGB colors):
 </table>
 
 
-## 🔧 Preprocessing Into 2D Slices
+## 🔧 Preprocessing
 
-The training pipeline expects **2D images and masks**, typically exported into:
-    data/
-        images/
-        masks/
+Because the UNet model is **2D**, while MRI volumes are **3D**, the preprocessing pipeline converts full 3D NIfTI volumes into clean, normalized, augmentable **2D slices** that can be fed into the network.  
+The preprocessing steps are as follows:
+
+---
+
+1. **Raw Data Organization**  
+   The raw MRI scans and their corresponding labels are stored as full 3D NIfTI volumes (`.nii.gz`) in separate folders for images and labels.
+
+2. **3D → 2D Slice Extraction**  
+   Each 3D volume typically has shape `(H, W, Slices)`.  
+   Because the model is 2D, individual 2D slices are extracted along a specified axis:
+   ```python
+   img2d = np.take(img3d, slice_index, axis=slice_axis)
+   lbl2d = np.take(lbl3d, slice_index, axis=slice_axis)
+
+3. **Normalization & Resizing**  
+Every extracted 2D slice is resized to a fixed `256 × 256` resolution and normalized to produce consistent MRI contrast across patients.
+
+4. **Data Augmentation (Training Only)**  
+   During training, augmentations such as `RandomElasticDeformation`, `RandomNoise`, and `RandomGamma` are applied to:
+   - increase dataset diversity  
+   - improve robustness  
+   - enhance generalization to unseen MRI scans  
+
+5. **Train/Validation Split and Batching**  
+After preprocessing, the dataset is split into training and validation subsets, which are loaded in batches and fed to the training loop.
 
 # ⚙️ Configuration System
 
-All experiment settings are defined in:
+All experiment settings are defined in a single central file:
 
     config.yaml
+
+This file contains **all model parameters, training hyperparameters, data settings, and pruning options**, allowing the entire system to be controlled from one unified location.
 
 Example:
 
@@ -207,118 +231,113 @@ Example:
         decoders.3: 0.3
       reinitialize_weights: rewind
 
-Pipelines may override LR, epochs, pruning ratio, or rewinding mode during sweeps.
+Pipelines can override fields such as learning rate, number of epochs, pruning ratios, or the rewinding mode during automated sweeps. This makes experiments fully reproducible while keeping configuration management clean and centralized.
 
 ---
 
-# 🚀 Baseline Training
+# 🧱 Repository Pipelines Overview
 
-Train the full UNet:
+This repository consists of **two main pipelines**:
+
+---
+
+# 1️⃣ Baseline Training + Evaluation
+
+Run the full UNet training and a final evaluation:
 
     python -m src.pipeline.baseline
 
-Outputs include:
-- model checkpoints  
-- `metrics.json`  
-- `training_curves.png`  
-- prediction samples  
+This pipeline:
+- trains the UNet from scratch  
+- saves model checkpoints  
+- evaluates the final model on the validation set  
+- outputs:
+  - `metrics.json`
+  - training curves (`training_curves.png`)
+  - prediction samples
 
 ---
 
-# 🎯 Evaluation
+# 2️⃣ Pruning + Evaluation + Retraining + Evaluation
 
-Evaluate a trained model:
+Run the structured pruning workflow:
+
+    python -m src.pipeline.pruned --mode <none|random|rewind>
+
+This pipeline performs the full pruning cycle:
+
+---
+
+## **Step 1 — Structured L1 Block-wise Pruning**
+- compute L1 norms for each filter  
+- rank and prune the lowest-norm filters according to `block_ratios`  
+- generate pruning masks  
+- apply the masks to remove channels from the UNet  
+
+Example block ratios:
+block_ratios:  
+  encoders.0: 0.0
+  encoders.1: 0.1
+  decoders.3: 0.4
+  decoders.5: 0.2
+
+---
+
+## **Step 2 — Rebuild the Pruned UNet**
+After pruning, the architecture is rebuilt:
+- reads pruning masks  
+- computes the new (reduced) channel widths  
+- constructs a smaller UNet  
+- loads the surviving weights correctly  
+
+---
+
+## **Step 3 — Apply Weight Initialization Mode**
+The rebuilt model is initialized using the specified rewinding option:
+
+- `none` → keep surviving weights  
+- `random` → reinitialize pruned model  
+- `rewind` → restore weights from an earlier checkpoint  
+
+---
+
+## **Step 4 — Evaluate the Pruned Model**
+Evaluate the pruned model before retraining:
 
     python -m src.training.eval
 
-Metrics include:
-- Dice score  
-- IoU  
-- Pixel accuracy  
-- Precision/recall  
+---
+
+## **Step 5 — Retrain the Pruned Model**
+(Optional depending on pipeline configuration)
+
+Retrains the reduced model to recover performance.
 
 ---
 
-# ✂️ Structured Pruning Pipeline
+## **Step 6 — Final Evaluation**
+Evaluate again after retraining to measure pruning impact.
 
-Prune the UNet and evaluate:
+------
 
-    python -m src.pipeline.pruned --mode rewind
+# 📊 L1 Analysis & Model Inspection
 
-Modes:
-- `none`  
-- `random`  
-- `rewind`  
-
----
-
-## L1 Block-wise Pruning
-
-Block ratios define how many filters to prune in each block.
-
-Example:
-
-    block_ratios:
-      encoders.0: 0.0
-      encoders.1: 0.1
-      decoders.3: 0.4
-      decoders.5: 0.2
-
-Process:
-1. Compute L1 norm  
-2. Rank filters  
-3. Drop lowest-norm filters  
-4. Save pruning mask  
-5. Apply pruning to UNet  
-
----
-
-## Rewinding Options
-
-| Mode   | Description                            |
-|--------|----------------------------------------|
-| none   | Keep pruned weights                    |
-| random | Reinitialize the pruned model          |
-| rewind | Restore weights from an earlier checkpoint |
-
-Example:
-
-    python -m src.pipeline.pruned --reinitialize_weights rewind
-
----
-
-## Rebuilding a Pruned UNet
-
-    python -m src.pruning.rebuild
-
-This script:
-- Reads pruning masks  
-- Computes new channel sizes  
-- Builds a reduced UNet  
-- Loads surviving weights  
-
----
-
-# 🧪 Model Inspection & L1 Analysis
-
-Inspect L1 statistics:
+Inspect L1 statistics and visualize pruning patterns:
 
     python -m src.pruning.model_inspect
 
-Generates:
-- Histograms  
-- Layer statistics  
+Outputs include:
+- L1 histograms  
+- layer-wise statistics  
 - CSV summaries  
 
-Located in:
+See:
 
     results/analysis/
 
 Notebooks:
-- `l1_distributions.ipynb`  
-- `pruning_notebook.ipynb`  
-
----
+- `l1_distributions.ipynb`
+- `pruning_notebook.ipynb`
 
 # 📊 Experiment Logging
 
@@ -348,7 +367,9 @@ Run the entire pipeline:
 
     python -m src.pipeline.run_full_exp
 
-This performs:
+This script executes **both previously described pipelines** (baseline training/evaluation and the full pruning workflow) in a single automated sequence.
+
+It performs:
 
     1. Train baseline
     2. Prune (mode=none)
@@ -356,32 +377,8 @@ This performs:
     4. Prune (mode=rewind)
     5. Evaluate all
 
-Each experiment overrides LR, epochs, and pruning settings automatically.
-
----
-
-# 📈 Example Results
-
-| Model         | Params | FLOPs     | Dice | Notes            |
-|---------------|--------|----------:|------|------------------|
-| Baseline UNet | 1.9M   | 55 GFLOPs | 0.88 | —                |
-| Pruned 30%    | 1.4M   | 38 GFLOPs | 0.87 | Smaller model    |
-| Pruned 50%    | 1.0M   | 28 GFLOPs | 0.85 | More aggressive  |
-
-Training/validation curves saved as:
-
-    training_curves.png
-
----
-
-# 🛣️ Roadmap
-
-- [ ] Learning rate finder  
-- [ ] FLOPs/latency benchmarking  
-- [ ] Add Attention UNet / UNet++  
-- [ ] 3D support  
-- [ ] Combined pruning + quantization  
-- [ ] Export models to ONNX/TensorRT  
+The runner can include **multiple nested loops** to systematically test different hyperparameters (e.g., learning rates, epochs) and/or compare the effect of various **block ratio configurations**.  
+Each experiment automatically overrides the LR, epoch count, pruning ratios, and rewinding mode.
 
 ---
 
