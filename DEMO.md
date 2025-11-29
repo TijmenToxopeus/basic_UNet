@@ -1,4 +1,4 @@
-# 🔍 Demo: Cardiac MRI Segmentation & Structured Pruning Framework
+# Demo: Cardiac MRI Segmentation & Structured Pruning Framework
 
 This demo showcases the key components of my master thesis project:  
 a **UNet-based cardiac MRI segmentation pipeline**, extended with **structured L1 filter pruning**, rewinding, and rebuildable architectures.
@@ -8,7 +8,7 @@ show meaningful code snippets, and present some preliminary results I obtained.
 
 ---
 
-# 1️⃣ Project Overview
+# Project Overview
 
 Deep learning models for medical imaging have grown increasingly large, leading to higher memory usage, longer inference times, and difficulty deploying models on resource-limited systems.  
 This motivates the use of **model pruning**, a family of techniques aimed at reducing the number of parameters while preserving model accuracy.
@@ -37,7 +37,7 @@ The goal is to reduce model parameters and computation while maintaining high se
 
 ---
 
-# 2️⃣ Repository Overview
+# Repository Overview
 
 To support a clean, modular, and fully reproducible experimentation setup, the project is organized into a structured repository.  
 Each component of the pipeline—model definition, preprocessing, training, pruning, evaluation, and logging—is cleanly separated.  
@@ -76,7 +76,7 @@ src/
     config.yaml                # Central configuration file for model, training, pruning
 ```
 
-### 🔍 Design Principles Behind the Structure
+###Design Principles Behind the Structure
 
 - **Modularity:**  
   Each subsystem (training/evaluation, pruning, rebuilding) lives in its own directory, making the pipeline easy to understand and extend.
@@ -92,7 +92,7 @@ src/
 
 ---
 
-# 2️⃣ Model Overview
+# Model Overview
 
 The segmentation model used in this project is a **2D U-Net**, a widely adopted convolutional neural network architecture designed specifically for biomedical image segmentation.  
 U-Net follows an encoder–decoder structure:
@@ -110,7 +110,7 @@ Its strong performance on small and medium-sized biomedical datasets makes it a 
 
 ---
 
-# 2️⃣ Dataset Overview
+# Dataset Overview
 
 The ACDC dataset provides two 3D MRI volumes per patient:
 
@@ -124,7 +124,7 @@ Each volume contains ~10 short-axis slices.
 - Training: 100 patients × 2 volumes × ~10 slices ≈ **2000 2D slices**  
 - Test: 50 patients × 2 volumes × ~10 slices ≈ **1000 2D slices**
 
-### 📁 Example Patient Folder
+### Example Patient Folder
 ```
 patient001/
     patient001_4d.nii.gz
@@ -145,7 +145,7 @@ patient001/
 
 ---
 
-# 3️⃣ Pipeline Overview
+# Pipeline Overview
 
 The framework consists of **three main stages**:
 
@@ -193,7 +193,7 @@ This stage compresses the model and measures the performance impact.
 
 ---
 
-# 4️⃣ Key Code Snippets
+# Key Code Snippets
 
 ## ⚙️ Centralized Configuration
 ```yaml
@@ -292,27 +292,24 @@ def rebuild_pruned_unet(model, masks, save_path=None):
         meta_path = save_path.with_name(save_path.stem + "_meta.json")
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=4)
-        #print(f"🧾 Saved metadata to {meta_path}")
 
     print("UNet successfully rebuilt.")
     return pruned_model
 ```
 
-# 7️⃣ Results
+# Results
 
 This section summarizes the performance of the baseline UNet, the pruned model, and the retrained pruned model.  
 All results are based on segmentation of ED/ES slices from the ACDC dataset.
 
 ---
 
-## 7.1 🟦 Baseline Model Results
+## 7.1 Baseline Model Results
 
-### 📈 Training Curve
-<p align="center">
-  <img src="data_examples/media_images_training_curve_5001_708270ab63c1290852cf.png" width="600"/>
-</p>
+### Training Curve
+<img src="data_examples/media_images_training_curve_5001_708270ab63c1290852cf.png" width="600"/>
 
-### 📊 Baseline Validation Metrics
+### Baseline Validation Metrics
 | Metric | Value |
 |--------|-------|
 | Epochs | **100** |
@@ -323,10 +320,8 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 
 ---
 
-### 🧪 Baseline Test Results
-<p align="center">
-  <img src="data_examples/media_images_sample_prediction_0_187af438637e300c513e.png" width="600"/>
-</p>
+### Baseline Test Results
+<img src="data_examples/media_images_sample_prediction_0_187af438637e300c513e.png" width="600"/>
 
 | Metric | Value |
 |--------|-------|
@@ -343,9 +338,9 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 
 ---
 
-## 7.2 ✂️ Structured Pruning Results
+## 7.2 Structured Pruning Results
 
-### 🧮 Block Ratios Used
+### Block Ratios Used
 ```yaml
 ratios:
     block_ratios:
@@ -366,14 +361,14 @@ reinitialize_weights: null
 
 ---
 
-### 📉 Evaluation *After Pruning* (Before Retraining)
+### Evaluation *After Pruning* (Before Retraining)
 
 | Metric | Value |
 |--------|-------|
 | Parameters | **43.71M** |
-| Params Reduced | **XX%** |
+| Params Reduced | **0.41%** |
 | Flops | **54.38G** |
-| FLOPs Reduced | **XX%** |
+| FLOPs Reduced | **0.11%** |
 | Inference time | **2.37ms** |
 | VRAM | **620.9MB** |
 | Dice | **0.7222** |
@@ -381,20 +376,17 @@ reinitialize_weights: null
 
 
 
-<p align="center">
-  <img src="data_examples/media_images_sample_prediction_2_pruned_eval.png" width="600"/>
-</p>
+<img src="data_examples/media_images_sample_prediction_2_pruned_eval.png" width="600"/>
 
 ---
 
-## 7.3 🔁 Retraining the Pruned Model
+## 7.3 Retraining the Pruned Model
 
-### 📈 Retraining Curve
-<p align="center">
-  <img src="data_examples/media_images_retraining_curve_501_780f503367d59f6ec9ca.png" width="600"/>
-</p>
+### Retraining Curve
+<img src="data_examples/media_images_retraining_curve_501_780f503367d59f6ec9ca.png" width="600"/>
 
-### 📊 Retraining Validation Metrics
+
+### Retraining Validation Metrics
 | Metric | Value |
 |--------|-------|
 | Epochs | **10** |
@@ -405,7 +397,7 @@ reinitialize_weights: null
 
 ---
 
-## 7.4 🧪 Final Evaluation After Retraining
+## 7.4 Final Evaluation After Retraining
 
 | Metric | Value |
 |--------|-------|
@@ -413,20 +405,7 @@ reinitialize_weights: null
 | IoU | **0.7809** |
 
 
-
-<p align="center">
-  <img src="data_examples/media_images_sample_prediction_0_retrained_pruned_eval.png" width="600"/>
-</p>
+<img src="data_examples/media_images_sample_prediction_0_retrained_pruned_eval.png" width="600"/>
 
 ---
-
-This structured layout clearly shows:
-
-- the baseline model’s performance  
-- the effect of pruning  
-- how retraining restores accuracy  
-- efficiency improvements (params/FLOPs)  
-- qualitative visual examples  
-
-Perfect for your interview demo. 
 
