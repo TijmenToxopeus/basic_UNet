@@ -105,7 +105,7 @@ U-Net is particularly effective for tasks where precise localization is required
 Its strong performance on small and medium-sized biomedical datasets makes it a standard baseline for medical image segmentation tasks like the one addressed in this project. Below an image of the U-Net structure is depicted. 
 
 <p align="center">
-  <img src="images/unet_structure.png" width="700"/>
+  <img src="data_examples/u-net-architecture.png" width="700"/>
 </p>
 
 ---
