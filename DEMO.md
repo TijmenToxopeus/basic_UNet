@@ -298,53 +298,142 @@ def rebuild_pruned_unet(model, masks, save_path=None):
     return pruned_model
 ```
 
-# 5️⃣ Results & Artifacts
+# 7️⃣ Results
 
-## 📊 L1 Norm Distribution (before pruning)
-<img src="results/analysis/l1_hist.png" width="500"/>
+This section summarizes the performance of the baseline UNet, the pruned model, and the retrained pruned model.  
+All results are based on segmentation of ED/ES slices from the ACDC dataset.
 
-## ✂️ Pruning Mask Example
-```python
-{
-  "encoders.1": [True, False, True, True, ...],
-  "decoders.3": [True, True, False, ...]
-}
+---
+
+## 7.1 🟦 Baseline Model Results
+
+### 📈 Training Curve
+<p align="center">
+  <img src="results/baseline/training_curve.png" width="600"/>
+</p>
+
+### 📊 Baseline Validation Metrics
+| Metric | Value |
+|--------|-------|
+| Epochs | **100** |
+| Parameters | **43.89M** |
+| VRAM | **12177.8MB** |
+| Dice (mean) | **0.9408±0.0076** |
+| IoU (mean) | **IoU=0.8914±0.0127** |
+| LV Dice | **XX.XX** |
+| RV Dice | **XX.XX** |
+| Myocardium Dice | **XX.XX** |
+
+
+---
+
+### 🧪 Baseline Test Results
+<p align="center">
+  <img src="results/baseline/test_example.png" width="600"/>
+</p>
+
+| Metric | Value |
+|--------|-------|
+| Flops | **54.44G** |
+| Inference time | **2.37ms** |
+| VRAM | **620.9MB** |
+| Dice (test) | **0.8163±0.2206** |
+| IoU (test) | **0.7528±0.2137** |
+| Background Dice| **0.9974±0.0033** |
+| LV Dice | **0.8810±0.2309** |
+| RV Dice | **0.7623±3397** |
+| Myocardium Dice | **0.8062±2335** |
+
+
+---
+
+## 7.2 ✂️ Structured Pruning Results
+
+### 🧮 Block Ratios Used
+```yaml
+ratios:
+    block_ratios:
+        encoders.0: 0
+        encoders.1: 0
+        encoders.2: 0
+        encoders.3: 0
+        encoders.4: 0
+        bottleneck: 0
+        decoders.1: 0.01
+        decoders.3: 0
+        decoders.5: 0
+        decoders.7: 0
+        decoders.9: 0
+
+reinitialize_weights: null
 ```
 
-## 📉 Parameter Reduction
-| Model | Params | Δ | Dice |
-|-------|--------|-----|-------|
-| Baseline UNet | 8.2M | – | 0.91 |
-| Pruned UNet | 3.6M | −56% | 0.90 |
+---
 
-## 🎨 Example Segmentation Output
-| Input Slice | Prediction |
-|-------------|------------|
-| <img src="data_examples/img.png" width="250"/> | <img src="data_examples/pred.png" width="250"/> |
+### 📉 Evaluation *After Pruning* (Before Retraining)
+
+| Metric | Value |
+|--------|-------|
+| Parameters | **43.71M** |
+| Params Reduced | **XX%** |
+| Flops | **54.38G** |
+| FLOPs Reduced | **XX%** |
+| Inference time | **2.37ms** |
+| VRAM | **620.9MB** |
+| Dice | **0.7222** |
+| IoU | **0.6342** |
+
+
+
+<p align="center">
+  <img src="results/pruned/eval_before_retrain.png" width="600"/>
+</p>
 
 ---
 
-# 6️⃣ Engineering Takeaways
+## 7.3 🔁 Retraining the Pruned Model
 
-- Config-driven design enables reproducibility  
-- Modular pruning system supports arbitrary architectures  
-- Rewinding stabilizes pruned training  
-- Rebuilding ensures the pruned model is *actually smaller*  
-- Pipeline scales from quick tests → full sweeps  
-- Clean separation of:
-  - data  
-  - model  
-  - training  
-  - pruning  
-  - evaluation  
-  - experiment runner  
+### 📈 Retraining Curve
+<p align="center">
+  <img src="results/baseline/training_curve.png" width="600"/>
+</p>
+
+### 📊 Retraining Validation Metrics
+| Metric | Value |
+|--------|-------|
+| Epochs | **10** |
+| Parameters | **43.71M** |
+| VRAM | **12174.2MB** |
+| Dice (mean) | **0.9490±0.0048** |
+| IoU (mean) | **IoU=0.9052±0.0083** |
+| LV Dice | **XX.XX** |
+| RV Dice | **XX.XX** |
+| Myocardium Dice | **XX.XX** |
 
 ---
 
-# 7️⃣ Appendix (Optional)
+## 7.4 🧪 Final Evaluation After Retraining
 
-- full pruning masks  
-- full logs  
-- model summary  
-- L1 per-layer tables  
+| Metric | Value |
+|--------|-------|
+| Dice | **0.8415** |
+| IoU | **0.7809** |
+
+
+
+<p align="center">
+  <img src="results/pruned/eval_before_retrain.png" width="600"/>
+</p>
+
+---
+
+This structured layout clearly shows:
+
+- the baseline model’s performance  
+- the effect of pruning  
+- how retraining restores accuracy  
+- efficiency improvements (params/FLOPs)  
+- qualitative visual examples  
+
+Perfect for your interview demo. 
 
