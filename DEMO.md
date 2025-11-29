@@ -315,8 +315,8 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 | Epochs | **100** |
 | Parameters | **43.89M** |
 | VRAM | **12177.8MB** |
-| Dice (mean) | **0.9408±0.0076** |
-| IoU (mean) | **IoU=0.8914±0.0127** |
+| Dice (mean) | **0.9408** |
+| IoU (mean) | **IoU=0.8914** |
 
 ---
 
@@ -328,12 +328,12 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 | Flops | **54.44G** |
 | Inference time | **2.37ms** |
 | VRAM | **620.9MB** |
-| Dice (test) | **0.8163±0.2206** |
-| IoU (test) | **0.7528±0.2137** |
-| Background Dice| **0.9974±0.0033** |
-| LV Dice | **0.8810±0.2309** |
-| RV Dice | **0.7623±3397** |
-| Myocardium Dice | **0.8062±2335** |
+| Dice (test) | **0.8163** |
+| IoU (test) | **0.7528** |
+| Background Dice| **0.9974** |
+| LV Dice | **0.8810** |
+| RV Dice | **0.7623** |
+| Myocardium Dice | **0.8062** |
 
 
 ---
@@ -392,8 +392,8 @@ reinitialize_weights: null
 | Epochs | **10** |
 | Parameters | **43.71M** |
 | VRAM | **12174.2MB** |
-| Dice (mean) | **0.9490±0.0048** |
-| IoU (mean) | **IoU=0.9052±0.0083** |
+| Dice (mean) | **0.9490** |
+| IoU (mean) | **IoU=0.9052** |
 
 ---
 
