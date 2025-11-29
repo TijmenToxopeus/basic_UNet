@@ -141,7 +141,7 @@ patient001/
 
 | ES Image | ES Overlay |
 |----------|------------|
-| <img src="data_examples/snapshot0005.png" width="250"/> | <img src="data_examples/snapshot0006.png" width="250"/> |
+| <img src="data_examples/snapshot0007.png" width="250"/> | <img src="data_examples/snapshot0008.png" width="250"/> |
 
 ---
 
