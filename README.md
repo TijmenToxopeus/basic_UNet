@@ -207,8 +207,8 @@ These 3D volumes are later converted into 2D slices for training the 2D UNet.
 <td><strong>Overlay</strong></td>
 </tr>
 <tr>
-<td><img src="data_examples/snapshot0005.png" width="300"/></td>
-<td><img src="data_examples/snapshot0006.png" width="300"/></td>
+<td><img src="data_examples/snapshot0007.png" width="300"/></td>
+<td><img src="data_examples/snapshot0008.png" width="300"/></td>
 </tr>
 </table>
 
