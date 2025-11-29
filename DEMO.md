@@ -309,7 +309,7 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 
 ### 📈 Training Curve
 <p align="center">
-  <img src="results/baseline/training_curve.png" width="600"/>
+  <img src="data_examples/media_images_training_curve_5001_708270ab63c1290852cf.png" width="600"/>
 </p>
 
 ### 📊 Baseline Validation Metrics
@@ -329,7 +329,7 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 
 ### 🧪 Baseline Test Results
 <p align="center">
-  <img src="results/baseline/test_example.png" width="600"/>
+  <img src="data_examples/media_images_sample_prediction_0_187af438637e300c513e.png" width="600"/>
 </p>
 
 | Metric | Value |
