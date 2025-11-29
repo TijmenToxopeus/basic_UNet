@@ -116,8 +116,22 @@ Requires:
 
 # Dataset
 
-This framework uses **2D slices extracted from 3D NIfTI volumes (`.nii.gz`)**, such as those provided by the **ACDC cardiac MRI dataset**.  
-Each patient folder contains end-diastolic (ED) and end-systolic (ES) frames together with corresponding ground-truth masks.
+This framework uses **2D slices extracted from 3D NIfTI volumes (`.nii.gz`)**, such as those provided by the **ACDC cardiac MRI dataset** (Automated Cardiac Diagnosis Challenge).  
+Each patient folder contains two cardiac phases:
+
+- **End-diastolic (ED)**
+- **End-systolic (ES)**
+
+together with corresponding ground-truth segmentation masks.
+
+The ACDC dataset consists of short-axis cardiac MRI scans acquired across multiple centers, scanners, and patient conditions.  
+For each patient, the left ventricle (LV), right ventricle (RV), and myocardium are manually annotated.
+
+**End-diastolic (ED)** represents the moment when the heart is **maximally filled with blood** (largest ventricular volume), just before contraction.  
+**End-systolic (ES)** is the moment after the heart has **fully contracted** (smallest ventricular volume).  
+
+These two phases capture the extreme points of the cardiac cycle and are commonly used for evaluating cardiac function, including stroke volume and ejection fraction.  
+Because both ED and ES volumes include clear anatomical variation and clinically relevant shape differences, they provide a rich set of examples for training and evaluating the segmentation model.
 
 ---
 
@@ -150,6 +164,28 @@ The masks contain **integer class labels** (not RGB colors):
 - 3 → LV  
 
 ---
+
+## 📏 Dataset Size
+
+The ACDC dataset used in this project contains:
+
+- **100 patients** in the training set  
+- **50 patients** in the test set  
+- Each patient provides **2 three-dimensional MRI volumes** (ED and ES)  
+- Each 3D volume contains approximately **10 short-axis slices**
+
+This results in approximately:
+
+**Training set:**
+100 patients × 2 volumes × 10 slices ≈ **2000 slices**
+
+**Test set:**
+50 patients × 2 volumes × 10 slices ≈ **1000 slices**
+
+These 3D volumes are later converted into 2D slices for training the 2D UNet.
+
+---
+
 ## Example (ED and ES Slices)
 
 ### End-Diastolic (ED)
