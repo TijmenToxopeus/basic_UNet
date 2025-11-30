@@ -316,7 +316,7 @@ All results are based on segmentation of ED/ES slices from the ACDC dataset.
 | Parameters | **43.89M** |
 | VRAM | **12177.8MB** |
 | Dice (mean) | **0.9408** |
-| IoU (mean) | **IoU=0.8914** |
+| IoU (mean) | **0.8914** |
 
 ---
 
