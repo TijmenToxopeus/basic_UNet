@@ -56,7 +56,7 @@ def evaluate(cfg=None, debug=False):
     # ============================================================
     # --- INIT WANDB ---
     # ============================================================
-    run = setup_wandb(cfg, job_type="evaluation")
+    run = setup_wandb(cfg, job_type=phase)
 
     # ============================================================
     # --- CONFIG PARAMETERS ---

@@ -1,5 +1,6 @@
 import wandb
 import os
+#from paths import _get_suffix_from_ratios
 
 def setup_wandb(cfg, job_type="training"):
     """
@@ -10,8 +11,10 @@ def setup_wandb(cfg, job_type="training"):
     exp_name = exp_cfg.get("experiment_name", "unnamed_exp")
     model_name = exp_cfg.get("model_name", "UNet")
     entity = exp_cfg.get("wandb_entity", "tijmen-toxo-tu-delft")
+    #suffix = _get_suffix_from_ratios(cfg)
 
-    run_name = f"{exp_name}_{job_type}"
+    # run_name = f"{exp_name}_{job_type}"
+    run_name = f"{exp_name}"
     os.environ["WANDB_SILENT"] = "true"
 
     run = wandb.init(

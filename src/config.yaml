@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp41
+  experiment_name: exp45
   model_name: UNet_ACDC
   seed: 42
   device: cuda
@@ -19,12 +19,12 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 10
+    num_epochs: 3
     save_interval: 5
     loss_function: ce_dice
   paths:
-    train_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
-    label_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr
+    train_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
+    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr
     save_root: results
 evaluation:
   phase: baseline_evaluation
@@ -32,8 +32,8 @@ evaluation:
   num_slices_per_volume: null
   num_visuals: 3
   paths:
-    eval_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
-    label_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
+    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
+    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
 pruning:
   method: l1_norm
