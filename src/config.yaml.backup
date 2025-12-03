@@ -19,8 +19,8 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 100
-    save_interval: 25
+    num_epochs: 10
+    save_interval: 5
     loss_function: ce_dice
   paths:
     train_dir: /media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
@@ -37,7 +37,7 @@ evaluation:
     save_root: results
 pruning:
   method: l1_norm
-  reinitialize_weights: null # null, "random" or "rewind"
+  reinitialize_weights: null
   ckpt_path:
     subfolder: baseline
     ckpt_name: final_model.pth
@@ -47,11 +47,11 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.0
+      encoders.0: 0.01
       encoders.1: 0.0
       encoders.2: 0.0
       encoders.3: 0.0
-      encoders.4: 0.01
+      encoders.4: 0.0
       bottleneck: 0.0
       decoders.1: 0.0
       decoders.3: 0.0
