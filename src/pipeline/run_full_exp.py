@@ -193,8 +193,11 @@ import os
 CONFIG_PATH = "/media/ttoxopeus/basic_UNet/src/config.yaml"
 BACKUP_PATH = CONFIG_PATH + ".backup"
 
-# Blocks to test
-BLOCKS = [
+# Only sweep this block
+TARGET_BLOCK = "decoders.1"
+
+# Full list of blocks (must stay for resetting)
+ALL_BLOCKS = [
     "encoders.0",
     "encoders.1",
     "encoders.2",
@@ -208,10 +211,10 @@ BLOCKS = [
     "decoders.9",
 ]
 
-# Ratios to sweep
-RATIOS = [0.01, 0.05, 0.1]
+# Ratios to test
+RATIOS = [0.01, 0.05, 0.1, 0,2]
 
-# Weight init modes
+# Weight initialization modes
 INIT_MODES = ["none", "random", "rewind"]
 
 
@@ -245,25 +248,22 @@ def sweep_pruned(block_name, ratio, init_mode):
     # Load fresh original config
     cfg = load_config(BACKUP_PATH)
 
-    # Reset all block ratios to 0.0
-    for blk in BLOCKS:
+    # Reset ALL blocks to 0.0
+    for blk in ALL_BLOCKS:
         cfg["pruning"]["ratios"]["block_ratios"][blk] = 0.0
 
-    # Apply selected block pruning
+    # Apply only the selected pruning on the target block
     cfg["pruning"]["ratios"]["block_ratios"][block_name] = float(ratio)
 
-    # Set reinitialization mode
+    # Apply reinitialization mode
     cfg["pruning"]["reinitialize_weights"] = (
         None if init_mode == "none" else init_mode
     )
 
-    # Training settings remain intact (retraining IS allowed)
-    # Baseline is not retrained here → correct behavior
-
-    # Save to config.yaml
+    # Save config.yaml
     save_config(cfg)
 
-    # Run full prune pipeline (prune → eval → retrain → eval)
+    # Run pruning pipeline
     run("python -m src.pipeline.pruned")
 
 
@@ -273,11 +273,10 @@ def main():
     shutil.copy(CONFIG_PATH, BACKUP_PATH)
     print("📂 Backed up original config.yaml → config.yaml.backup")
 
-    # Sweep combinations
-    for block in BLOCKS:
-        for ratio in RATIOS:
-            for mode in INIT_MODES:
-                sweep_pruned(block, ratio, mode)
+    # Sweep ONLY decoders.1
+    for ratio in RATIOS:
+        for mode in INIT_MODES:
+            sweep_pruned(TARGET_BLOCK, ratio, mode)
 
     # Restore the original config at the end
     shutil.copy(BACKUP_PATH, CONFIG_PATH)
