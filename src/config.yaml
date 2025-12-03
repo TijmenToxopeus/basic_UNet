@@ -19,7 +19,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 5
+    num_epochs: 10
     save_interval: 5
     loss_function: ce_dice
   paths:
@@ -37,7 +37,7 @@ evaluation:
     save_root: results
 pruning:
   method: l1_norm
-  reinitialize_weights: null # null, "random" or "rewind"
+  reinitialize_weights: rewind
   ckpt_path:
     subfolder: baseline
     ckpt_name: final_model.pth
@@ -54,7 +54,7 @@ pruning:
       encoders.4: 0.0
       bottleneck: 0.0
       decoders.1: 0.0
-      decoders.3: 0.0
+      decoders.3: 0.1
       decoders.5: 0.0
       decoders.7: 0.0
       decoders.9: 0.0

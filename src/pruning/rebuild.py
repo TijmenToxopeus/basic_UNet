@@ -361,10 +361,18 @@ def plot_unet_schematic(enc_features, dec_features, bottleneck_out,
 
 
 
-def rebuild_pruned_unet(model, masks, prunable_layers, save_path=None):
+def rebuild_pruned_unet(model, masks, save_path=None):
     """Main orchestrator."""
 
     print("🔧 Rebuilding pruned UNet architecture...")
+
+    def is_prunable(mod):
+        return isinstance(mod, nn.Conv2d)
+
+    prunable_layers = {
+        name: is_prunable(module)
+        for name, module in model.named_modules()
+    }
 
     enc_features, bottleneck_out, dec_features = get_pruned_feature_sizes(model, masks)
 
