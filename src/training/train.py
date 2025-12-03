@@ -70,7 +70,7 @@ def train_model(cfg=None):
     # ============================================================
     # --- INITIALIZE WANDB ---
     # ============================================================
-    run = setup_wandb(cfg, job_type="training")
+    run = setup_wandb(cfg, job_type=phase)
     wandb.watch_called = False
 
 
@@ -259,7 +259,7 @@ def train_model(cfg=None):
         if (epoch + 1) % save_int == 0 or (epoch + 1) == epochs:
             ckpt_path = os.path.join(save_dir, f"epoch_{epoch+1}.pth")
             torch.save(model.state_dict(), ckpt_path)
-            wandb.save(ckpt_path)
+            #wandb.save(ckpt_path)
 
 
 
@@ -269,7 +269,7 @@ def train_model(cfg=None):
     final_model_path = os.path.join(save_dir, "final_model.pth")
     torch.save(model.state_dict(), final_model_path)
     print(f"💾 Saved final model: {final_model_path}")
-    wandb.save(final_model_path)
+    #wandb.save(final_model_path)
 
 
     # ============================================================

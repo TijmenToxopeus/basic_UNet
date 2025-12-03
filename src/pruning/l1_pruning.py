@@ -421,7 +421,7 @@ def run_pruning(cfg=None):
         json.dump(summary, f, indent=4)
 
     wandb.save(str(summary_path))
-    wandb.save(str(paths.pruned_model))
+    # wandb.save(str(paths.pruned_model))
 
     run.finish()
     print(f"💾 Summary saved to {summary_path}")

@@ -1,7 +1,7 @@
 import yaml
 from pathlib import Path
 
-def load_config(config_path="/media/ttoxopeus/basic_UNet/src/config.yaml", return_path=False):
+def load_config(config_path="/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml", return_path=False):
     """
     Load a single YAML configuration file.
     Always uses the provided absolute path (no defaults or merging).
