@@ -256,7 +256,7 @@ def train_model(cfg=None):
         # -------------------------
         # Save checkpoint
         # -------------------------
-        if (epoch + 1) % save_int == 0 or (epoch + 1) == epochs:
+        if (epoch + 1) == save_int or (epoch + 1) == epochs:
             ckpt_path = os.path.join(save_dir, f"epoch_{epoch+1}.pth")
             torch.save(model.state_dict(), ckpt_path)
             #wandb.save(ckpt_path)

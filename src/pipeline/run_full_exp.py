@@ -190,7 +190,7 @@ import yaml
 import shutil
 import os
 
-CONFIG_PATH = "/media/ttoxopeus/basic_UNet/src/config.yaml"
+CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
 BACKUP_PATH = CONFIG_PATH + ".backup"
 
 # Only sweep this block
@@ -212,7 +212,7 @@ ALL_BLOCKS = [
 ]
 
 # Ratios to test
-RATIOS = [0.01, 0.05, 0.1, 0,2]
+RATIOS = [0.01, 0.05, 0.1]
 
 # Weight initialization modes
 INIT_MODES = ["none", "random", "rewind"]
