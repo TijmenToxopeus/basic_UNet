@@ -19,8 +19,8 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 2
-    save_interval: 10
+    num_epochs: 25
+    save_interval: 5
     loss_function: ce_dice
   paths:
     train_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr

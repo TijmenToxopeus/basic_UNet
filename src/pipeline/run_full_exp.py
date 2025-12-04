@@ -212,7 +212,7 @@ ALL_BLOCKS = [
 ]
 
 # Ratios to test
-RATIOS = [0.01, 0.05, 0.1]
+RATIOS = [0.01, 0.05, 0.1, 0.2]
 
 # Weight initialization modes
 INIT_MODES = ["none", "random", "rewind"]

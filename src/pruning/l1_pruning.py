@@ -320,15 +320,15 @@ def run_pruning(cfg=None):
     # ============================================================
     # --- DEBUG: Check Model Changes For 0% Pruning ---
     # ============================================================
-    print("\n🔍 DEBUG: Capturing model weights BEFORE rebuild...")
-    model_before = copy.deepcopy(model)
-    total_params = 0
-    print("DEBUG -- Sample weights BEFORE pruning:")
-    for name, p in model_before.named_parameters():
-        print(f"  {name}: mean={p.mean().item():.5f}, std={p.std().item():.5f}")
-        total_params += 1
-        if total_params > 6:
-            break
+    # print("\n🔍 DEBUG: Capturing model weights BEFORE rebuild...")
+    # model_before = copy.deepcopy(model)
+    # total_params = 0
+    # print("DEBUG -- Sample weights BEFORE pruning:")
+    # for name, p in model_before.named_parameters():
+    #     print(f"  {name}: mean={p.mean().item():.5f}, std={p.std().item():.5f}")
+    #     total_params += 1
+    #     if total_params > 6:
+    #         break
 
     # ============================================================
     # --- REBUILD PRUNED MODEL ---
@@ -444,42 +444,42 @@ def run_pruning(cfg=None):
         else:
             print("🔄 Using current weights for rebuild...")
 
-    # ============================================================
-    # --- DEBUG: Compare BEFORE vs AFTER ---
-    # ============================================================
-    print("\n🔍 DEBUG: Checking if weights changed after 0% pruning...\n")
+    # # ============================================================
+    # # --- DEBUG: Compare BEFORE vs AFTER ---
+    # # ============================================================
+    # print("\n🔍 DEBUG: Checking if weights changed after 0% pruning...\n")
 
-    changed = 0
-    unchanged = 0
-    compared = 0
+    # changed = 0
+    # unchanged = 0
+    # compared = 0
 
-    for (n1, p1), (n2, p2) in zip(model_before.named_parameters(), pruned_model.named_parameters()):
-        compared += 1
+    # for (n1, p1), (n2, p2) in zip(model_before.named_parameters(), pruned_model.named_parameters()):
+    #     compared += 1
 
-        if p1.shape != p2.shape:
-            print(f"❌ SHAPE MISMATCH: {n1}: {p1.shape} vs {p2.shape}")
-            changed += 1
-            continue
+    #     if p1.shape != p2.shape:
+    #         print(f"❌ SHAPE MISMATCH: {n1}: {p1.shape} vs {p2.shape}")
+    #         changed += 1
+    #         continue
 
-        if torch.allclose(p1, p2, atol=1e-6):
-            print(f"✔ UNCHANGED: {n1}")
-            unchanged += 1
-        else:
-            print(f"❌ CHANGED: {n1}")
-            changed += 1
+    #     if torch.allclose(p1, p2, atol=1e-6):
+    #         print(f"✔ UNCHANGED: {n1}")
+    #         unchanged += 1
+    #     else:
+    #         print(f"❌ CHANGED: {n1}")
+    #         changed += 1
 
-    print("\n🧪 DEBUG SUMMARY")
-    print("-----------------------------")
-    print(f"  Total params compared: {compared}")
-    print(f"  ✔ Unchanged:           {unchanged}")
-    print(f"  ❌ Changed:             {changed}")
-    print("-----------------------------")
+    # print("\n🧪 DEBUG SUMMARY")
+    # print("-----------------------------")
+    # print(f"  Total params compared: {compared}")
+    # print(f"  ✔ Unchanged:           {unchanged}")
+    # print(f"  ❌ Changed:             {changed}")
+    # print("-----------------------------")
 
-    if changed == 0:
-        print("🎉 SUCCESS: Model unchanged — 0% pruning path is correct.")
-    else:
-        print("🔥 ERROR: Model changed — pruning pipeline modifies weights even at 0%.")
-        print("   → Issue is inside rebuild_pruned_unet() or mask logic.\n")
+    # if changed == 0:
+    #     print("🎉 SUCCESS: Model unchanged — 0% pruning path is correct.")
+    # else:
+    #     print("🔥 ERROR: Model changed — pruning pipeline modifies weights even at 0%.")
+    #     print("   → Issue is inside rebuild_pruned_unet() or mask logic.\n")
 
 
     # # ============================================================
