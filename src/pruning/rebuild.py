@@ -175,7 +175,7 @@ def copy_pruned_weights(original, pruned, masks, verbose=True):
 
 
 
-def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verbose=True):
+def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verbose=False):
     """
     Copies weights from the original UNet to the newly pruned UNet.
     
@@ -206,7 +206,6 @@ def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verb
 
         # 1️⃣ CASE A — LAYER IS PRUNABLE
         if module_name in prunable_layers and prunable_layers[module_name]:
-
             mask = masks[module_name]
 
             # Slice output channels (always dimension 0)
@@ -378,7 +377,7 @@ def rebuild_pruned_unet(model, masks, save_path=None):
 
     pruned_model = build_pruned_unet(model, enc_features, dec_features=dec_features, bottleneck_out=bottleneck_out)
     #pruned_model = copy_pruned_weights(model, pruned_model, masks)
-    pruned_model = copy_all_weights_with_pruning(model, pruned_model, masks, prunable_layers, verbose=True)
+    pruned_model = copy_all_weights_with_pruning(model, pruned_model, masks, prunable_layers, verbose=False)
 
     plot_unet_schematic(enc_features, dec_features, bottleneck_out, 
                         in_ch=1, out_ch=4, figsize=(10, 6), title="U-Net Structure")

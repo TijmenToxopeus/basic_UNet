@@ -133,21 +133,47 @@ class ExperimentPaths:
     #     return "no_prune"
 
     def _get_suffix_from_ratios(self, cfg):
-        """Generate suffix like 0_0_10_20_30_30_30_20_10 or add _reinit if needed."""
+        """
+        Generate descriptive suffix for folder/model naming.
+        Includes:
+        - pruning method (l1 or corr_tXX)
+        - block ratios
+        - weight reinit mode
+        """
+        
         prune_cfg = cfg.get("pruning", {})
         ratios = prune_cfg.get("ratios", {}).get("block_ratios", None)
+        method = prune_cfg.get("method", "l1_norm") 
 
-        if ratios:
-            suffix = "_".join(str(int(v * 100)) for v in ratios.values())
+        # ------------------------------
+        # 1) METHOD PREFIX
+        # ------------------------------
+        if method == "correlation":
+            threshold = prune_cfg.get("threshold", 0.90)   # default
+            t_int = int(threshold * 100)
+            method_prefix = f"corr_t{t_int}"
         else:
-            suffix = "no_prune"
+            method_prefix = "l1_norm"
 
-        # Add indicator if weights are reinitialized after pruning
+        # ------------------------------
+        # 2) RATIOS SUFFIX (old behavior)
+        # ------------------------------
+        if ratios:
+            ratios_suffix = "_".join(str(int(v * 100)) for v in ratios.values())
+        else:
+            ratios_suffix = "no_prune"
+
+        suffix = f"{method_prefix}_{ratios_suffix}"
+
+        # ------------------------------
+        # 3) REINIT MODE SUFFIX
+        # ------------------------------
         mode = prune_cfg.get("reinitialize_weights", None)
         if mode == "random":
             suffix += "_random"
         elif mode == "rewind":
             suffix += "_rewind"
+
         return suffix
 
     # ------------------------------------------------------------

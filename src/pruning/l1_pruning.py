@@ -1,228 +1,3 @@
-# """
-# Pruning pipeline for basic UNet
-# --------------------------------
-# Loads a trained baseline model, applies structured L1-based pruning,
-# rebuilds the pruned model, and saves both the weights and architecture metadata.
-# """
-
-# import os
-# import json
-# import torch
-# import pandas as pd
-# import wandb
-
-# from src.models.unet import UNet
-# from src.pruning.model_inspect import (
-#     model_to_dataframe_with_l1,
-#     compute_l1_norms,
-#     compute_l1_stats,
-#     get_pruning_masks_blockwise,
-# )
-# from src.pruning.rebuild import rebuild_pruned_unet
-# from src.utils.config import load_config
-# from src.utils.paths import get_paths
-# from src.utils.wandb_utils import setup_wandb
-
-
-# # ------------------------------------------------------------
-# # MAIN PRUNING PIPELINE
-# # ------------------------------------------------------------
-# def run_pruning(cfg=None):
-#     # ============================================================
-#     # --- LOAD CONFIGURATION ---
-#     # ============================================================
-#     if cfg is None:
-#         cfg, config_path = load_config(return_path=True)
-#     else:
-#         config_path = None
-
-#     paths = get_paths(cfg, config_path)
-#     pruning_cfg = cfg["pruning"]
-#     model_cfg = cfg["train"]["model"]
-
-#     exp_name = cfg["experiment"]["experiment_name"]
-#     model_name = cfg["experiment"]["model_name"]
-#     print(f"✂️ Starting L1-based structured pruning for {model_name}")
-#     print(paths)
-
-#     block_ratios = pruning_cfg.get("ratios", {}).get("block_ratios", {})
-#     default_ratio = pruning_cfg.get("ratios", {}).get("default", 0.25)
-
-#     # ============================================================
-#     # --- INIT WANDB RUN ---
-#     # ============================================================
-#     run = setup_wandb(cfg, job_type="pruning")
-
-#     # ============================================================
-#     # --- LOAD BASELINE MODEL ---
-#     # ============================================================
-#     baseline_ckpt = paths.baseline_ckpt
-#     if not baseline_ckpt.exists():
-#         raise FileNotFoundError(f"❌ Baseline checkpoint not found at {baseline_ckpt}")
-
-#     in_ch = model_cfg["in_channels"]
-#     out_ch = model_cfg["out_channels"]
-#     enc_features = model_cfg["features"]
-
-#     device = torch.device(cfg["experiment"].get("device", "cuda" if torch.cuda.is_available() else "cpu"))
-#     print(f"📦 Loading baseline model from: {baseline_ckpt}")
-
-#     model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
-#     state = torch.load(baseline_ckpt, map_location=device)
-#     model.load_state_dict(state)
-#     model.eval()
-
-#     # ============================================================
-#     # --- COMPUTE L1 NORMS ---
-#     # ============================================================
-#     print("📊 Computing L1 norms for all Conv layers...")
-#     norms = compute_l1_norms(model)
-#     l1_stats = compute_l1_stats(norms)
-#     df = model_to_dataframe_with_l1(model, l1_stats, remove_nan_layers=True)
-#     pd.set_option("display.max_rows", None)
-#     print("✅ L1 statistics computed.\n")
-
-#     # Log L1 norm table to W&B
-#     wandb.log({"l1_norms": wandb.Table(dataframe=df)})
-
-#     # ============================================================
-#     # --- GENERATE MASKS ---
-#     # ============================================================
-#     print("✂️ Generating pruning masks...")
-#     masks = get_pruning_masks_blockwise(model, norms, block_ratios=block_ratios, default_ratio=default_ratio)
-#     print("✅ Pruning masks generated.\n")
-
-
-
-#     # ============================================================
-#     # --- REBUILD PRUNED MODEL ---
-#     # ============================================================
-#     paths.ensure_dir(paths.pruned_model_dir)
-
-
-#     # ============================================================
-#     # --- OPTIONAL: REINITIALIZE PRUNED MODEL ---
-#     # ============================================================
-#     if pruning_cfg.get("reinitialize_weights") == "rewind":
-#         print("🔄 Reinitializing pruned model with rewind weights...")
-#         rewind_ckpt = paths.rewind_ckpt
-
-#         if not rewind_ckpt.exists():
-#             raise FileNotFoundError(f"❌ Rewind checkpoint not found at {rewind_ckpt}")
-        
-#         rewind_model = UNet(in_ch=in_ch, out_ch=out_ch, enc_features=enc_features).to(device)
-#         state = torch.load(rewind_ckpt, map_location=device)
-#         rewind_model.load_state_dict(state)
-#         rewind_model.eval()
-#         pruned_model = rebuild_pruned_unet(rewind_model, masks, save_path=paths.pruned_model)
-
-#     else:
-#         print("🔄 Reinitializing pruned model with current weights...")
-#         pruned_model = rebuild_pruned_unet(model, masks, save_path=paths.pruned_model)
-
-#     # ============================================================
-#     # --- OPTIONAL: REINITIALIZE PRUNED MODEL ---
-#     # ============================================================
-#     if pruning_cfg.get("reinitialize_weights") == "random":
-#         print("🔄 Reinitializing pruned model with random weights...")
-
-#         # ---- Compute global pre-reinit stats ----
-#         before_params = []
-#         for m in pruned_model.modules():
-#             if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear)):
-#                 before_params.append(m.weight.detach().cpu().flatten())
-#         before_params = torch.cat(before_params)
-#         before_mean = before_params.mean().item()
-#         before_std = before_params.std().item()
-
-#         print(f"📊 BEFORE reinit: mean={before_mean:.6f}, std={before_std:.6f}")
-
-#         # ---- Apply initialization ----
-#         def init_weights(m):
-#             if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-#                 torch.nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-#                 if m.bias is not None:
-#                     torch.nn.init.zeros_(m.bias)
-
-#         pruned_model.apply(init_weights)
-
-#         # ---- Compute global post-reinit stats ----
-#         after_params = []
-#         for m in pruned_model.modules():
-#             if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear)):
-#                 after_params.append(m.weight.detach().cpu().flatten())
-#         after_params = torch.cat(after_params)
-#         after_mean = after_params.mean().item()
-#         after_std = after_params.std().item()
-
-#         print(f"📊 AFTER reinit:  mean={after_mean:.6f}, std={after_std:.6f}")
-
-#         # ---- Check success ----
-#         print("🔍 Reinit verification:")
-#         print(f"Mean changed by {abs(after_mean - before_mean):.6f}")
-#         print(f"Std  changed by {abs(after_std - before_std):.6f}")
-#         print("✅ Reinitialized weights.\n")
-
-#         # Log to W&B
-#         wandb.log({
-#             "reinit_mean_before": before_mean,
-#             "reinit_std_before": before_std,
-#             "reinit_mean_after": after_mean,
-#             "reinit_std_after": after_std,
-#         })
-
-#     # ============================================================
-#     # --- PARAMETER REDUCTION SUMMARY ---
-#     # ============================================================
-#     orig_params = sum(p.numel() for p in model.parameters())
-#     pruned_params = sum(p.numel() for p in pruned_model.parameters())
-#     reduction = 100 * (1 - pruned_params / orig_params)
-
-#     meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
-#     print(f"📉 Parameter reduction: {reduction:.2f}% ({orig_params/1e6:.2f}M → {pruned_params/1e6:.2f}M)")
-
-#     wandb.log({
-#         "orig_params": orig_params,
-#         "pruned_params": pruned_params,
-#         "reduction_percent": reduction,
-#         "default_ratio": default_ratio,
-#         **{f"ratio_{k}": v for k, v in block_ratios.items()}
-#     })
-
-#     # ============================================================
-#     # --- SAVE SUMMARY JSON ---
-#     # ============================================================
-#     summary = {
-#         "experiment": exp_name,
-#         "model_name": model_name,
-#         "block_ratios": block_ratios,
-#         "default_ratio": default_ratio,
-#         "orig_params": int(orig_params),
-#         "pruned_params": int(pruned_params),
-#         "reduction_percent": float(reduction),
-#         "baseline_ckpt": str(baseline_ckpt),
-#         "pruned_model": str(paths.pruned_model),
-#         "meta_path": str(meta_path),
-#         "reinitialized": pruning_cfg.get("reinitialize", False),
-#     }
-
-#     summary_path = paths.pruned_model_dir / "pruning_summary.json"
-#     with open(summary_path, "w") as f:
-#         json.dump(summary, f, indent=4)
-
-#     wandb.save(str(summary_path))
-#     wandb.save(str(paths.pruned_model))
-
-#     run.finish()
-
-#     print(f"💾 Summary saved to {summary_path}")
-#     print("✅ Pruning complete.\n")
-
-
-# if __name__ == "__main__":
-#     run_pruning()
-
-
 """
 Pruning pipeline for basic UNet
 --------------------------------
@@ -233,7 +8,10 @@ rebuilds the pruned model, and saves both the weights and architecture metadata.
 import os
 import json
 import torch
+import numpy as np
 import pandas as pd
+import nibabel as nib
+import torchvision.transforms as T
 import wandb
 import copy
 
@@ -244,6 +22,7 @@ from src.pruning.model_inspect import (
     compute_l1_stats,
     get_pruning_masks_blockwise,
 )
+from src.pruning.redundancy import get_redundancy_masks 
 from src.pruning.rebuild import rebuild_pruned_unet
 from src.utils.config import load_config
 from src.utils.paths import get_paths
@@ -314,21 +93,60 @@ def run_pruning(cfg=None):
     # --- GENERATE MASKS ---
     # ============================================================
     print("✂️ Generating pruning masks...")
-    masks = get_pruning_masks_blockwise(model, norms, block_ratios=block_ratios, default_ratio=default_ratio)
-    print("✅ Pruning masks generated.\n")
+    method = pruning_cfg.get("method", "l1_norm")
 
-    # ============================================================
-    # --- DEBUG: Check Model Changes For 0% Pruning ---
-    # ============================================================
-    # print("\n🔍 DEBUG: Capturing model weights BEFORE rebuild...")
-    # model_before = copy.deepcopy(model)
-    # total_params = 0
-    # print("DEBUG -- Sample weights BEFORE pruning:")
-    # for name, p in model_before.named_parameters():
-    #     print(f"  {name}: mean={p.mean().item():.5f}, std={p.std().item():.5f}")
-    #     total_params += 1
-    #     if total_params > 6:
-    #         break
+    print(f"✂️ Using pruning method: {method}")
+
+    if method == "l1_norm":
+        # ---- L1-based pruning ----
+        print("📊 Computing L1 norms for all Conv layers...")
+        norms = compute_l1_norms(model)
+        l1_stats = compute_l1_stats(norms)
+        df = model_to_dataframe_with_l1(model, l1_stats, remove_nan_layers=True)
+        wandb.log({"l1_norms": wandb.Table(dataframe=df)})
+
+        print("✂️ Generating L1-based pruning masks...")
+        masks = get_pruning_masks_blockwise(
+            model,
+            norms,
+            block_ratios=block_ratios,
+            default_ratio=default_ratio
+        )
+
+    elif method == "correlation":
+        # ---- CORRELATION-based pruning ----
+        
+
+        print("🔍 Running correlation-based redundancy pruning...")
+        
+        # Use a real sample slice from your dataset for activation extraction
+        # OR load the example path from config
+        nii_path = "/mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr/patient001_ED_0000.nii.gz"
+        nii = nib.load(nii_path)
+        volume = nii.get_fdata()
+
+        slice_idx = volume.shape[-1] // 2
+        img2d = volume[:, :, slice_idx]
+        img2d = (img2d - np.min(img2d)) / (np.max(img2d) - np.min(img2d))
+
+        transform = T.Compose([
+            T.ToTensor(),
+            T.Resize((256,256)),
+        ])
+        example_img = transform(img2d).unsqueeze(0).float()
+        
+        threshold = pruning_cfg.get("threshold", 0.9)
+
+        masks = get_redundancy_masks(
+            model,
+            example_img,
+            block_ratios=block_ratios,
+            threshold=threshold,
+            plot=False  
+        )
+    else:
+        raise ValueError(f"❌ Unknown pruning method '{method}'. Choose 'l1' or 'correlation'.")
+
 
     # ============================================================
     # --- REBUILD PRUNED MODEL ---
@@ -366,13 +184,6 @@ def run_pruning(cfg=None):
 
             print(f"📊 BEFORE reinit: mean={before_mean:.6f}, std={before_std:.6f}")
 
-            # # ---- Apply initialization ----
-            # def init_weights(m):
-            #     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-            #         torch.nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            #         if m.bias is not None:
-            #             torch.nn.init.zeros_(m.bias)
-
             def init_weights(m):
                 # Conv layers
                 if isinstance(m, torch.nn.Conv2d):
@@ -404,19 +215,6 @@ def run_pruning(cfg=None):
             torch.save(pruned_model.state_dict(), save_path)
             print(f"💾 Saved pruned model to {save_path}")
 
-        #     meta = {
-        #         "enc_features": enc_features,
-        #         "dec_features": dec_features,
-        #         "bottleneck_out": bottleneck_out,
-        #     }
-
-        # meta_path = save_path.with_name(save_path.stem + "_meta.json")
-        # with open(meta_path, "w") as f:
-        #     json.dump(meta, f, indent=4)
-        #print(f"🧾 Saved metadata to {meta_path}")
-
-
-
             # ---- Compute global post-reinit stats ----
             after_params = []
             for m in pruned_model.modules():
@@ -443,95 +241,6 @@ def run_pruning(cfg=None):
             })
         else:
             print("🔄 Using current weights for rebuild...")
-
-    # # ============================================================
-    # # --- DEBUG: Compare BEFORE vs AFTER ---
-    # # ============================================================
-    # print("\n🔍 DEBUG: Checking if weights changed after 0% pruning...\n")
-
-    # changed = 0
-    # unchanged = 0
-    # compared = 0
-
-    # for (n1, p1), (n2, p2) in zip(model_before.named_parameters(), pruned_model.named_parameters()):
-    #     compared += 1
-
-    #     if p1.shape != p2.shape:
-    #         print(f"❌ SHAPE MISMATCH: {n1}: {p1.shape} vs {p2.shape}")
-    #         changed += 1
-    #         continue
-
-    #     if torch.allclose(p1, p2, atol=1e-6):
-    #         print(f"✔ UNCHANGED: {n1}")
-    #         unchanged += 1
-    #     else:
-    #         print(f"❌ CHANGED: {n1}")
-    #         changed += 1
-
-    # print("\n🧪 DEBUG SUMMARY")
-    # print("-----------------------------")
-    # print(f"  Total params compared: {compared}")
-    # print(f"  ✔ Unchanged:           {unchanged}")
-    # print(f"  ❌ Changed:             {changed}")
-    # print("-----------------------------")
-
-    # if changed == 0:
-    #     print("🎉 SUCCESS: Model unchanged — 0% pruning path is correct.")
-    # else:
-    #     print("🔥 ERROR: Model changed — pruning pipeline modifies weights even at 0%.")
-    #     print("   → Issue is inside rebuild_pruned_unet() or mask logic.\n")
-
-
-    # # ============================================================
-    # # --- OPTIONAL RANDOM REINIT ---
-    # # ============================================================
-    # if pruning_cfg.get("reinitialize_weights") == "random":
-    #     print("🔄 Reinitializing pruned model with random weights...")
-
-    #     # ---- Compute global pre-reinit stats ----
-    #     before_params = []
-    #     for m in pruned_model.modules():
-    #         if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear)):
-    #             before_params.append(m.weight.detach().cpu().flatten())
-    #     before_params = torch.cat(before_params)
-    #     before_mean = before_params.mean().item()
-    #     before_std = before_params.std().item()
-
-    #     print(f"📊 BEFORE reinit: mean={before_mean:.6f}, std={before_std:.6f}")
-
-    #     # ---- Apply initialization ----
-    #     def init_weights(m):
-    #         if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-    #             torch.nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-    #             if m.bias is not None:
-    #                 torch.nn.init.zeros_(m.bias)
-
-    #     pruned_model.apply(init_weights)
-
-    #     # ---- Compute global post-reinit stats ----
-    #     after_params = []
-    #     for m in pruned_model.modules():
-    #         if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear)):
-    #             after_params.append(m.weight.detach().cpu().flatten())
-    #     after_params = torch.cat(after_params)
-    #     after_mean = after_params.mean().item()
-    #     after_std = after_params.std().item()
-
-    #     print(f"📊 AFTER reinit:  mean={after_mean:.6f}, std={after_std:.6f}")
-
-    #     # ---- Check success ----
-    #     print("🔍 Reinit verification:")
-    #     print(f"Mean changed by {abs(after_mean - before_mean):.6f}")
-    #     print(f"Std  changed by {abs(after_std - before_std):.6f}")
-    #     print("✅ Reinitialized weights.\n")
-
-    #     # Log to W&B
-    #     wandb.log({
-    #         "reinit_mean_before": before_mean,
-    #         "reinit_std_before": before_std,
-    #         "reinit_mean_after": after_mean,
-    #         "reinit_std_after": after_std,
-    #     })
 
     # PARAM SUMMARY, SAVE, ETC...
     orig_params = sum(p.numel() for p in model.parameters())
@@ -564,180 +273,3 @@ def run_pruning(cfg=None):
 
 if __name__ == "__main__":
     run_pruning()
-
-
-# """
-# Clean Pruning Pipeline for basic UNet
-# -------------------------------------
-# Performs:
-# 1. Load baseline
-# 2. Compute L1 norms
-# 3. Generate masks
-# 4. Rebuild pruned model
-# 5. Optional weight reinitialization
-# 6. Save pruned model + summary
-# """
-
-# import os
-# import json
-# import torch
-# import pandas as pd
-# import wandb
-# import copy
-
-# from src.models.unet import UNet
-# from src.pruning.model_inspect import (
-#     model_to_dataframe_with_l1,
-#     compute_l1_norms,
-#     compute_l1_stats,
-#     get_pruning_masks_blockwise,
-# )
-# from src.pruning.rebuild import rebuild_pruned_unet
-# from src.utils.config import load_config
-# from src.utils.paths import get_paths
-# from src.utils.wandb_utils import setup_wandb
-
-
-# def run_pruning(cfg=None, debug=False):
-#     # ============================================================
-#     # LOAD CONFIG
-#     # ============================================================
-#     cfg, config_path = load_config(return_path=True) if cfg is None else (cfg, None)
-#     pruning_cfg = cfg["pruning"]
-#     model_cfg = cfg["train"]["model"]
-    
-#     exp_name = cfg["experiment"]["experiment_name"]
-#     model_name = cfg["experiment"]["model_name"]
-
-#     print(f"\n✂️  Pruning UNet — experiment: {exp_name}")
-
-#     # Setup paths
-#     paths = get_paths(cfg, config_path)
-
-#     # ============================================================
-#     # LOAD BASELINE MODEL
-#     # ============================================================
-#     baseline_ckpt = paths.baseline_ckpt
-#     if not baseline_ckpt.exists():
-#         raise FileNotFoundError(f"Baseline checkpoint missing: {baseline_ckpt}")
-
-#     in_ch = model_cfg["in_channels"]
-#     out_ch = model_cfg["out_channels"]
-#     enc_features = model_cfg["features"]
-
-#     device = torch.device(cfg["experiment"].get("device", "cuda"))
-#     model = UNet(in_ch, out_ch, enc_features).to(device)
-
-#     print(f"📦  Loading baseline model from {baseline_ckpt}")
-#     model.load_state_dict(torch.load(baseline_ckpt, map_location=device))
-#     model.eval()
-
-#     # ============================================================
-#     # COMPUTE L1 NORMS
-#     # ============================================================
-#     print("📊  Computing L1 norms...")
-#     norms = compute_l1_norms(model)
-#     l1_stats = compute_l1_stats(norms)
-#     df = model_to_dataframe_with_l1(model, l1_stats, remove_nan_layers=True)
-#     wandb.log({"l1_norms": wandb.Table(dataframe=df)})
-
-#     # ============================================================
-#     # GENERATE PRUNING MASKS
-#     # ============================================================
-#     block_ratios = pruning_cfg["ratios"]["block_ratios"]
-#     default_ratio = pruning_cfg["ratios"].get("default", 0.25)
-
-#     print("✂️  Generating masks...")
-#     masks = get_pruning_masks_blockwise(model, norms, block_ratios, default_ratio)
-
-#     # Save baseline copy for debug diff
-#     model_before = copy.deepcopy(model) if debug else None
-
-#     # ============================================================
-#     # REBUILD PRUNED MODEL (+ Optional rewind)
-#     # ============================================================
-#     print("🔧  Rebuilding pruned model...")
-#     paths.ensure_dir(paths.pruned_model_dir)
-
-#     mode = pruning_cfg.get("reinitialize_weights")
-
-#     if mode == "rewind":
-#         print("🔄  Using rewind checkpoint...")
-#         rewind_ckpt = paths.rewind_ckpt
-#         if rewind_ckpt is None or not rewind_ckpt.exists():
-#             raise FileNotFoundError(f"Rewind checkpoint missing: {rewind_ckpt}")
-
-#         rewind_model = UNet(in_ch, out_ch, enc_features).to(device)
-#         rewind_model.load_state_dict(torch.load(rewind_ckpt, map_location=device))
-#         rewind_model.eval()
-#         pruned_model = rebuild_pruned_unet(rewind_model, masks)
-#     else:
-#         pruned_model = rebuild_pruned_unet(model, masks)
-
-#     # ============================================================
-#     # OPTIONAL RANDOM REINITIALIZATION
-#     # ============================================================
-#     if mode == "random":
-#         print("🎲  Applying random reinitialization...")
-
-#         def init_weights(m):
-#             if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear)):
-#                 torch.nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-#                 if m.bias is not None:
-#                     torch.nn.init.zeros_(m.bias)
-
-#         pruned_model.apply(init_weights)
-
-#     # ============================================================
-#     # SAVE FINAL PRUNED MODEL  (Fix for your bug!!)
-#     # ============================================================
-#     print(f"💾 Saving pruned model to {paths.pruned_model}")
-#     torch.save(pruned_model.state_dict(), paths.pruned_model)
-
-#     # ============================================================
-#     # OPTIONAL DEBUG: COMPARE MODEL BEFORE/AFTER
-#     # ============================================================
-#     if debug:
-#         print("\n🔍 Debug: checking if weights changed...")
-#         changed = 0
-#         unchanged = 0
-
-#         for (n1, p1), (n2, p2) in zip(model_before.named_parameters(), pruned_model.named_parameters()):
-#             if p1.shape != p2.shape:
-#                 changed += 1
-#                 continue
-#             if torch.allclose(p1, p2, atol=1e-6):
-#                 unchanged += 1
-#             else:
-#                 changed += 1
-
-#         print(f"Unchanged: {unchanged}, Changed: {changed}")
-
-#     # ============================================================
-#     # SAVE PRUNING SUMMARY
-#     # ============================================================
-#     orig_params = sum(p.numel() for p in model.parameters())
-#     pruned_params = sum(p.numel() for p in pruned_model.parameters())
-#     reduction = 100 * (1 - pruned_params / orig_params)
-
-#     summary = {
-#         "experiment": exp_name,
-#         "model_name": model_name,
-#         "block_ratios": block_ratios,
-#         "orig_params": int(orig_params),
-#         "pruned_params": int(pruned_params),
-#         "reduction_percent": float(reduction),
-#         "baseline_ckpt": str(baseline_ckpt),
-#         "pruned_model": str(paths.pruned_model),
-#     }
-
-#     summary_path = paths.pruned_model_dir / "pruning_summary.json"
-#     with open(summary_path, "w") as f:
-#         json.dump(summary, f, indent=4)
-
-#     print(f"📄  Summary saved to {summary_path}")
-#     print("✅  Pruning pipeline complete.\n")
-
-
-# if __name__ == "__main__":
-#     run_pruning(debug=False)

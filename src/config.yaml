@@ -36,7 +36,8 @@ evaluation:
     label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
 pruning:
-  method: l1_norm
+  method: correlation # l1_norm or correlation
+  threshold: 0.95 # Only for correlation pruning
   reinitialize_weights: null
   ckpt_path:
     subfolder: baseline
@@ -50,10 +51,10 @@ pruning:
       encoders.0: 0.0
       encoders.1: 0.0
       encoders.2: 0.0
-      encoders.3: 0.0
-      encoders.4: 0.0
-      bottleneck: 0.0
-      decoders.1: 0.01
+      encoders.3: 1.0
+      encoders.4: 1.0
+      bottleneck: 1.0
+      decoders.1: 0.0
       decoders.3: 0.0
       decoders.5: 0.0
       decoders.7: 0.0

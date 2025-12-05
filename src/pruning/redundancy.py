@@ -2,13 +2,16 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
-
+import matplotlib.patches as patches
 
 # -------------------------------------------------------------
 # 1. Collect feature activations
 # -------------------------------------------------------------
 def get_feature_maps(model, x):
     activations = {}
+
+    device = next(model.parameters()).device
+    x = x.to(device)
 
     def hook(name):
         def fn(m, inp, out):
@@ -139,23 +142,42 @@ def compute_layer_mask(C, groups, sim_matrix, prune_ratio):
 # -------------------------------------------------------------
 # 6. Plot redundant groups
 # -------------------------------------------------------------
-def plot_redundancy_groups(fmap, groups):
-    fmap = fmap[0]
+def plot_redundancy_groups(fmap, groups, mask=None, normalize=True):
+    """
+    fmap   : tensor [1, C, H, W]
+    groups : {group_id -> set(channel_idxs)}
+    mask   : boolean tensor [C], where False = pruned (optional)
+    """
+
+    fmap = fmap[0]  # [C, H, W]
 
     for gid, chans in groups.items():
         chans = sorted(chans)
         n = len(chans)
 
-        fig, axes = plt.subplots(1, n, figsize=(1.2 * n, 1.4), dpi=130)
+        fig, axes = plt.subplots(1, n, figsize=(1.4 * n, 1.6), dpi=130)
         if n == 1:
             axes = [axes]
 
         for ax, ch in zip(axes, chans):
             img = fmap[ch]
-            img = (img - img.min()) / (img.max() - img.min() + 1e-5)
+            if normalize:
+                img = (img - img.min()) / (img.max() - img.min() + 1e-5)
+
             ax.imshow(img, cmap="gray")
             ax.set_title(f"ch {ch}", fontsize=8)
             ax.axis("off")
+
+            # 🔴 Highlight pruned channels
+            if mask is not None and not mask[ch]:
+                rect = patches.Rectangle(
+                    (0, 0), 1, 1,
+                    linewidth=2,
+                    edgecolor='red',
+                    facecolor='none',
+                    transform=ax.transAxes
+                )
+                ax.add_patch(rect)
 
         fig.suptitle(f"Group {gid}", fontsize=12, y=1.08)
         plt.tight_layout(pad=0.3)
@@ -173,21 +195,42 @@ def get_ratio_for_layer(layer_name, block_ratios):
 # -------------------------------------------------------------
 # 7. FULL PIPELINE-INTEGRATED REDUNDANCY MASKING
 # -------------------------------------------------------------
-def get_redundancy_masks(model, x, block_ratios, threshold=0.9):
+def get_redundancy_masks(model, x, block_ratios, threshold=0.9, plot=False):
+    """
+    Compute pruning masks for a model using redundancy-based correlation pruning.
+
+    Returns:
+        masks[layer_name] = boolean mask of shape [C]
+    """
+
     activations = get_feature_maps(model, x)
     masks = {}
 
     total_channels_before = 0
     total_channels_after = 0
 
+    print("\n===============================================")
+    print("🔥 RUNNING CORRELATION-BASED PRUNING")
+    print(f"   threshold = {threshold}")
+    print(f"   plotting = {plot}")
+    print("===============================================\n")
+
     for layer_name, fmap in activations.items():
 
+        C = fmap.shape[1]
         prune_ratio = get_ratio_for_layer(layer_name, block_ratios)
 
+        # -----------------------------------------------------
+        # CASE 1 — This layer is NOT pruned → keep all channels
+        # -----------------------------------------------------
         if prune_ratio == 0.0:
+            masks[layer_name] = torch.ones(C, dtype=torch.bool)
+            print(f"Layer {layer_name}: prune_ratio=0.0 → keeping all {C} channels.")
             continue
 
-        C = fmap.shape[1]
+        # -----------------------------------------------------
+        # CASE 2 — This layer IS pruned
+        # -----------------------------------------------------
         total_channels_before += C
 
         print(f"\n=== Processing Layer: {layer_name} (ratio={prune_ratio}) ===")
@@ -198,47 +241,51 @@ def get_redundancy_masks(model, x, block_ratios, threshold=0.9):
         # 2. Redundant pairs
         pairs = find_redundant_pairs(sim, threshold)
 
-        # 3. Group channels
+        # 3. Groups of correlated channels
         groups = group_channels(pairs)
 
-        # 4. Visualization
-        if len(groups) > 0:
-            plot_redundancy_groups(fmap, groups)
-        else:
+        if len(groups) == 0:
             print("  No redundancy groups detected.")
+        else:
+            print(f"  Found {len(groups)} redundancy groups.")
 
-        # 5. Build mask + pruned channel indexes
+        # 4. Compute pruning mask
         layer_mask, pruned_ix = compute_layer_mask(C, groups, sim, prune_ratio)
+
+        # 5. Optional plots
+        if plot and len(groups) > 0:
+            plot_redundancy_groups(fmap, groups, mask=layer_mask)
 
         kept = layer_mask.sum().item()
         pruned = C - kept
         perc_pruned = 100 * pruned / C
         total_channels_after += kept
 
+        # -----------------------------------------------------
         # PRINT SUMMARY FOR THIS LAYER
+        # -----------------------------------------------------
         print(f"Layer {layer_name}:")
-        print(f"  - Total channels  : {C}")
-        print(f"  - Channels kept   : {kept}")
-        print(f"  - Channels pruned : {pruned}")
-        print(f"  - Pruned percentage: {perc_pruned:.2f}%")
-        print(f"  - Pruned indexes  : {pruned_ix}")
+        print(f"  - Total channels     : {C}")
+        print(f"  - Channels kept      : {kept}")
+        print(f"  - Channels pruned    : {pruned}")
+        print(f"  - Pruned percentage  : {perc_pruned:.2f}%")
+        print(f"  - Pruned indexes     : {pruned_ix}")
 
-        # 6. Save weight + bias masks
-        masks[f"{layer_name}.weight"] = layer_mask.clone()
-        masks[f"{layer_name}.bias"] = layer_mask.clone()
+        # Save this layer's mask
+        masks[layer_name] = layer_mask.clone()
 
-    # ------------------------------
+    # ------------------------------------------------------------------
     # FINAL SUMMARY
-    # ------------------------------
+    # ------------------------------------------------------------------
     print("\n================ PRUNING SUMMARY ================")
     print(f"Total channels before pruning: {total_channels_before}")
-    print(f"Total channels after pruning:  {total_channels_after}")
+    print(f"Total channels after pruning : {total_channels_after}")
 
     if total_channels_before > 0:
         total_pruned = total_channels_before - total_channels_after
         total_pruned_pct = 100 * total_pruned / total_channels_before
-        print(f"Total pruned: {total_pruned} channels")
-        print(f"Overall pruning percentage: {total_pruned_pct:.2f}%")
+        print(f"Total pruned channels      : {total_pruned}")
+        print(f"Overall pruning percentage : {total_pruned_pct:.2f}%")
 
     print("=================================================\n")
 
