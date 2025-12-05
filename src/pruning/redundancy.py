@@ -37,19 +37,26 @@ def get_feature_maps(model, x):
 # 2. Compute correlation matrix per layer
 # -------------------------------------------------------------
 def compute_similarity_matrix(fmap):
-    fmap = fmap[0]  # [C, H, W]
+    """
+    Vectorized correlation computation.
+    Much faster than Python loops.
+    """
+    fmap = fmap[0]                  # [C, H, W]
     C = fmap.size(0)
+    
+    # Flatten to [C, HW]
+    X = fmap.reshape(C, -1).float()  # stay in torch (on CPU)
+    X = X - X.mean(dim=1, keepdim=True)   # zero-mean per channel
 
-    sim = np.zeros((C, C))
-    flat = fmap.reshape(C, -1).cpu().numpy()
+    # Compute std per channel
+    std = X.std(dim=1, keepdim=True) + 1e-8
+    X = X / std
 
-    for i in range(C):
-        for j in range(i, C):
-            if i == j:
-                sim[i, j] = 1.0
-            else:
-                val = np.corrcoef(flat[i], flat[j])[0, 1]
-                sim[i, j] = sim[j, i] = val
+    # Correlation = normalized dot product
+    sim = (X @ X.T).cpu().numpy() / X.size(1)
+
+    # Clip numerical errors
+    sim = np.clip(sim, -1.0, 1.0)
 
     return sim
 

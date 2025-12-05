@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp47
+  experiment_name: exp48
   model_name: UNet_ACDC
   seed: 42
   device: cuda
@@ -19,8 +19,8 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 25
-    save_interval: 5
+    num_epochs: 100
+    save_interval: 10
     loss_function: ce_dice
   paths:
     train_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
@@ -34,9 +34,11 @@ evaluation:
   paths:
     eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
     label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
+    # eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset100_STONE/imagesTs
+    # label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset100_STONE/labelsTs
     save_root: results
 pruning:
-  method: correlation # l1_norm or correlation
+  method: l1_norm # l1_norm or correlation
   threshold: 0.95 # Only for correlation pruning
   reinitialize_weights: null
   ckpt_path:
@@ -51,9 +53,9 @@ pruning:
       encoders.0: 0.0
       encoders.1: 0.0
       encoders.2: 0.0
-      encoders.3: 1.0
-      encoders.4: 1.0
-      bottleneck: 1.0
+      encoders.3: 0.0
+      encoders.4: 0.0
+      bottleneck: 0.0
       decoders.1: 0.0
       decoders.3: 0.0
       decoders.5: 0.0

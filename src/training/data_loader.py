@@ -11,20 +11,70 @@ import random
 # ============================================================
 # --- TorchIO Augmentation Pipeline ---
 # ============================================================
-def get_torchio_augmentation_pipeline():
-    """Return a TorchIO augmentation pipeline for MRI-like images."""
-    return tio.Compose([
-        # # Resize to larger resolution first
-        # tio.Resize((1, 320, 320)),
+class SafeFlip(tio.Transform):
+    """
+    A TorchIO transform that replaces RandomFlip
+    by using torch.flip (which never produces negative strides).
+    """
 
-        # # Central crop to focus on heart
-        # tio.CropOrPad((1, 256, 256)),
-        tio.RandomElasticDeformation(num_control_points=7, max_displacement=3, p=0.3),  # elastic deformation
-        tio.RandomAffine(scales=(0.9, 1.1), degrees=10,              # rotation/scaling
-                         translation=5, p=0.5),
-        tio.RandomNoise(mean=0, std=(0, 0.05), p=0.25),              # Gaussian noise
-        tio.RandomBiasField(coefficients=0.3, p=0.3),                 # MRI intensity bias
-        tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.3),                # gamma correction
+    def __init__(self, axes=(1, 2), p=0.5):
+        super().__init__(p=p)
+        self.axes = axes
+
+    def apply_transform(self, subject):
+        for name, image in subject.get_images_dict().items():
+            data = image.data  # [C, H, W] or [1, C, H, W]
+
+            # axes for flip = (H, W)
+            torch_axes = tuple(a + 1 for a in self.axes)  # shift because dim 0 = batch
+
+            flipped = torch.flip(data, dims=torch_axes).clone()
+
+            image.set_data(flipped)
+
+        return subject
+
+# def get_torchio_augmentation_pipeline():
+#     """Return a TorchIO augmentation pipeline for MRI-like images."""
+#     return tio.Compose([
+#         # # Resize to larger resolution first
+#         # tio.Resize((1, 320, 320)),
+
+#         # # Central crop to focus on heart
+#         # tio.CropOrPad((1, 256, 256)),
+#         tio.RandomElasticDeformation(num_control_points=7, max_displacement=3, p=0.3),  # elastic deformation
+#         tio.RandomAffine(scales=(0.7, 1.3), degrees=20,              # rotation/scaling
+#                          translation=5, p=0.6),
+#         tio.RandomNoise(mean=0, std=(0, 0.05), p=0.25),              # Gaussian noise
+#         tio.RandomBiasField(coefficients=0.3, p=0.3),                 # MRI intensity bias
+#         tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.4),   
+#         #SafeFlip(axes=(1, 2), p=0.2) # gamma correction
+#     ])
+
+def get_torchio_augmentation_pipeline():
+    return tio.Compose([
+        # ----- GEOMETRIC -----
+        tio.RandomAffine(
+            scales=(0.9, 1.1),
+            degrees=10,
+            translation=5,
+            p=0.5
+        ),
+        tio.RandomElasticDeformation(
+            num_control_points=7,
+            max_displacement=4,
+            p=0.3
+        ),
+
+        # ----- INTENSITY TRANSFORMS (MOST IMPORTANT FOR CONTRAST!!) -----
+        tio.RandomGamma(log_gamma=(-0.5, 0.5), p=0.4),       # stronger gamma variation
+        tio.RandomBiasField(coefficients=0.4, p=0.3),        # MRI inhomogeneity
+        tio.RandomNoise(std=(0, 0.05), p=0.25),              # simulate noisy scanners
+        tio.RandomBlur(std=(0.1, 1.0), p=0.2),               # simulate lower resolution
+
+        # ----- SIMPLE BUT EFFECTIVE -----
+        # tio.RandomFlip(axes=(0,), p=0.5),                    # horizontal
+        # tio.RandomFlip(axes=(1,), p=0.5),                    # vertical
     ])
 
 
