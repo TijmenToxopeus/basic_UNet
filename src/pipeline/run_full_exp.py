@@ -185,6 +185,113 @@
 #     main()
 
 
+
+## different ratios and reinit sweep for one layer
+
+# import subprocess
+# import yaml
+# import shutil
+# import os
+
+# CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
+# BACKUP_PATH = CONFIG_PATH + ".backup"
+
+# # Only sweep this block
+# TARGET_BLOCK = "decoders.1"
+
+# # Full list of blocks (must stay for resetting)
+# ALL_BLOCKS = [
+#     "encoders.0",
+#     "encoders.1",
+#     "encoders.2",
+#     "encoders.3",
+#     "encoders.4",
+#     "bottleneck",
+#     "decoders.1",
+#     "decoders.3",
+#     "decoders.5",
+#     "decoders.7",
+#     "decoders.9",
+# ]
+
+# # Ratios to test
+# RATIOS = [0.01, 0.05, 0.1, 0.2]
+
+# # Weight initialization modes
+# INIT_MODES = ["none", "random", "rewind"]
+
+
+# def run(cmd):
+#     print(f"\n🚀 Running: {cmd}\n")
+#     result = subprocess.run(cmd, shell=True)
+#     if result.returncode != 0:
+#         raise RuntimeError(f"❌ Command failed: {cmd}")
+
+
+# def load_config(path=CONFIG_PATH):
+#     with open(path, "r") as f:
+#         return yaml.safe_load(f)
+
+
+# def save_config(cfg, path=CONFIG_PATH):
+#     with open(path, "w") as f:
+#         yaml.dump(cfg, f, sort_keys=False)
+
+
+# def sweep_pruned(block_name, ratio, init_mode):
+#     """
+#     Runs the ENTIRE pruned pipeline (prune → eval → retrain → eval)
+#     using python -m src.pipeline.pruned, with updated config.
+#     """
+
+#     print("\n===============================")
+#     print(f"🔥 FULL PRUNED PIPELINE | block={block_name} | ratio={ratio} | init={init_mode}")
+#     print("===============================\n")
+
+#     # Load fresh original config
+#     cfg = load_config(BACKUP_PATH)
+
+#     # Reset ALL blocks to 0.0
+#     for blk in ALL_BLOCKS:
+#         cfg["pruning"]["ratios"]["block_ratios"][blk] = 0.0
+
+#     # Apply only the selected pruning on the target block
+#     cfg["pruning"]["ratios"]["block_ratios"][block_name] = float(ratio)
+
+#     # Apply reinitialization mode
+#     cfg["pruning"]["reinitialize_weights"] = (
+#         None if init_mode == "none" else init_mode
+#     )
+
+#     # Save config.yaml
+#     save_config(cfg)
+
+#     # Run pruning pipeline
+#     run("python -m src.pipeline.pruned")
+
+
+# def main():
+
+#     # Backup original config
+#     shutil.copy(CONFIG_PATH, BACKUP_PATH)
+#     print("📂 Backed up original config.yaml → config.yaml.backup")
+
+#     # Sweep ONLY decoders.1
+#     for ratio in RATIOS:
+#         for mode in INIT_MODES:
+#             sweep_pruned(TARGET_BLOCK, ratio, mode)
+
+#     # Restore the original config at the end
+#     shutil.copy(BACKUP_PATH, CONFIG_PATH)
+#     print("\n🔄 Restored original config.yaml")
+
+#     print("\n🎉 FULL PRUNING SWEEP COMPLETED\n")
+
+
+# if __name__ == "__main__":
+#     main()
+
+
 import subprocess
 import yaml
 import shutil
@@ -193,10 +300,7 @@ import os
 CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
 BACKUP_PATH = CONFIG_PATH + ".backup"
 
-# Only sweep this block
-TARGET_BLOCK = "decoders.1"
-
-# Full list of blocks (must stay for resetting)
+# Layers to sweep
 ALL_BLOCKS = [
     "encoders.0",
     "encoders.1",
@@ -211,11 +315,8 @@ ALL_BLOCKS = [
     "decoders.9",
 ]
 
-# Ratios to test
-RATIOS = [0.01, 0.05, 0.1, 0.2]
-
-# Weight initialization modes
-INIT_MODES = ["none", "random", "rewind"]
+# Pruning ratios to test
+RATIOS = [0.2, 0.4, 0.6, 0.8]   # you can adjust this
 
 
 def run(cmd):
@@ -235,36 +336,35 @@ def save_config(cfg, path=CONFIG_PATH):
         yaml.dump(cfg, f, sort_keys=False)
 
 
-def sweep_pruned(block_name, ratio, init_mode):
+def run_pruning_experiment(layer, ratio):
     """
-    Runs the ENTIRE pruned pipeline (prune → eval → retrain → eval)
-    using python -m src.pipeline.pruned, with updated config.
+    Run the pruned model pipeline for *one layer and one ratio*.
     """
 
     print("\n===============================")
-    print(f"🔥 FULL PRUNED PIPELINE | block={block_name} | ratio={ratio} | init={init_mode}")
+    print(f"🔥 Pruning Layer = {layer} | Ratio = {ratio}")
     print("===============================\n")
 
-    # Load fresh original config
+    # Load clean config
     cfg = load_config(BACKUP_PATH)
 
-    # Reset ALL blocks to 0.0
+    # Reset ALL pruning ratios to 0
     for blk in ALL_BLOCKS:
         cfg["pruning"]["ratios"]["block_ratios"][blk] = 0.0
 
-    # Apply only the selected pruning on the target block
-    cfg["pruning"]["ratios"]["block_ratios"][block_name] = float(ratio)
+    # Apply pruning only to selected layer
+    cfg["pruning"]["ratios"]["block_ratios"][layer] = float(ratio)
 
-    # Apply reinitialization mode
-    cfg["pruning"]["reinitialize_weights"] = (
-        None if init_mode == "none" else init_mode
-    )
+    # Disable weight reinitialization for stability
+    cfg["pruning"]["reinitialize_weights"] = None
 
-    # Save config.yaml
+    # Save modified config
     save_config(cfg)
 
-    # Run pruning pipeline
+    # Run pipeline
     run("python -m src.pipeline.pruned")
+
+    print(f"✅ Completed: {layer} @ {ratio}\n")
 
 
 def main():
@@ -273,16 +373,18 @@ def main():
     shutil.copy(CONFIG_PATH, BACKUP_PATH)
     print("📂 Backed up original config.yaml → config.yaml.backup")
 
-    # Sweep ONLY decoders.1
-    for ratio in RATIOS:
-        for mode in INIT_MODES:
-            sweep_pruned(TARGET_BLOCK, ratio, mode)
+    # Sweep all layers × ratios
+    for layer in ALL_BLOCKS:
+        for ratio in RATIOS:
 
-    # Restore the original config at the end
+            # Optionally skip ratio=0 for plots (kept here for baseline)
+            run_pruning_experiment(layer, ratio)
+
+    # Restore final config
     shutil.copy(BACKUP_PATH, CONFIG_PATH)
     print("\n🔄 Restored original config.yaml")
 
-    print("\n🎉 FULL PRUNING SWEEP COMPLETED\n")
+    print("\n🎉 FULL LAYER × RATIO PRUNING SWEEP COMPLETED\n")
 
 
 if __name__ == "__main__":

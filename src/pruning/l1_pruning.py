@@ -22,7 +22,7 @@ from src.pruning.model_inspect import (
     compute_l1_stats,
     get_pruning_masks_blockwise,
 )
-from src.pruning.redundancy import get_redundancy_masks 
+from src.pruning.redundancy import get_redundancy_masks, load_random_slices_acdc 
 from src.pruning.rebuild import rebuild_pruned_unet
 from src.utils.config import load_config
 from src.utils.paths import get_paths
@@ -114,35 +114,32 @@ def run_pruning(cfg=None):
         )
 
     elif method == "correlation":
-        # ---- CORRELATION-based pruning ----
-        
-
         print("🔍 Running correlation-based redundancy pruning...")
         
-        # Use a real sample slice from your dataset for activation extraction
-        # OR load the example path from config
-        nii_path = "/mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr/patient001_ED_0000.nii.gz"
-        nii = nib.load(nii_path)
-        volume = nii.get_fdata()
+        # -------------------------
+        # Load MULTIPLE slices
+        # -------------------------
+        img_dir = "/mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr/"
+        num_samples = pruning_cfg.get("num_slices", 20)
+        print(f"num slices: {num_samples}")
 
-        slice_idx = volume.shape[-1] // 2
-        img2d = volume[:, :, slice_idx]
-        img2d = (img2d - np.min(img2d)) / (np.max(img2d) - np.min(img2d))
+        example_slices = load_random_slices_acdc(img_dir, num_slices=num_samples)
 
-        transform = T.Compose([
-            T.ToTensor(),
-            T.Resize((256,256)),
-        ])
-        example_img = transform(img2d).unsqueeze(0).float()
-        
+        print(f"Loaded {len(example_slices)} example slices for correlation pruning.")
+
         threshold = pruning_cfg.get("threshold", 0.9)
+        batch_size = pruning_cfg.get("batch_size", 4)
 
+        # -------------------------
+        # Run correlation pruning
+        # -------------------------
         masks = get_redundancy_masks(
-            model,
-            example_img,
+            model=model,
+            example_slices=example_slices,
             block_ratios=block_ratios,
             threshold=threshold,
-            plot=False  
+            batch_size=batch_size,
+            plot=False
         )
     else:
         raise ValueError(f"❌ Unknown pruning method '{method}'. Choose 'l1' or 'correlation'.")

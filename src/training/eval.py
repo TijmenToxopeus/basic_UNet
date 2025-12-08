@@ -311,6 +311,8 @@ def evaluate(cfg=None, debug=False):
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=4)
 
+    # save_pruning_summary(cfg, metrics, save_dir) # data for comoparison plots
+
     wandb.log({
         "mean_dice_fg": avg_dice_fg,
         "std_dice_fg":  std_dice_fg,
@@ -353,6 +355,57 @@ def save_visual(img, mask, pred, save_dir, idx):
     plt.savefig(path)
     plt.close(fig)
     return path
+
+# def save_pruning_summary(cfg, metrics, save_dir):
+#     """
+#     Saves a lightweight JSON file containing:
+#     - layer name pruned
+#     - pruning ratio
+#     - dice score
+#     - phase (pruned or retrained)
+#     """
+
+#     # Extract layer + ratio from config
+#     prune_dict = cfg["pruning"]["ratios"]["block_ratios"]
+
+#     # The layer being pruned is the one that is > 0
+#     pruned_layers = [(k, v) for k, v in prune_dict.items() if v > 0]
+#     if len(pruned_layers) == 0:
+#         layer_name  = "none"
+#         prune_ratio = 0.0
+#     else:
+#         layer_name, prune_ratio = pruned_layers[0]   # Only one layer varies in your sweep
+
+#     # Dice score for your plots (foreground dice)
+#     dice = metrics["mean_dice_fg"]
+
+#     # Phase determines filename
+#     phase = metrics["phase"]
+
+#     if phase == "pruned_evaluation":
+#         filename = "summary_pruned.json"
+#     elif phase == "retrained_pruned_evaluation":
+#         filename = "summary_retrained.json"
+#     else:
+#         filename = "summary_baseline.json"
+
+#     summary = {
+#         "phase": phase,
+#         "layer": layer_name,
+#         "ratio": prune_ratio,
+#         "dice_fg": float(dice),
+#         "dice_all": float(metrics["per_class"]["LV"]["dice_mean"]),  # example if needed
+#         "params_m": metrics["params_m"],
+#         "flops_g": metrics["flops_g"],
+#         "inference_ms": metrics["inference_ms"],
+#     }
+
+#     save_path = os.path.join(save_dir, filename)
+
+#     with open(save_path, "w") as f:
+#         json.dump(summary, f, indent=4)
+
+#     print(f"💾 Saved pruning summary → {save_path}")
 
 
 if __name__ == "__main__":
