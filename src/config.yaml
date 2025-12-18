@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp48
+  experiment_name: exp51
   model_name: UNet_ACDC
   seed: 42
   device: cuda
@@ -19,7 +19,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 3
+    num_epochs: 15
     save_interval: 10
     loss_function: ce_dice
   paths:
@@ -37,8 +37,8 @@ evaluation:
     save_root: results
 pruning:
   method: correlation
-  threshold: 0.95
-  num_slices: 20 
+  threshold: 0.8
+  num_slices: 10
   reinitialize_weights: null
   ckpt_path:
     subfolder: baseline
@@ -51,12 +51,12 @@ pruning:
     block_ratios:
       encoders.0: 0.0
       encoders.1: 0.0
-      encoders.2: 0.0
-      encoders.3: 0.0
-      encoders.4: 0.2
-      bottleneck: 0.0
-      decoders.1: 0.0
-      decoders.3: 0.0
-      decoders.5: 0.0
+      encoders.2: 0.1
+      encoders.3: 0.1
+      encoders.4: 0.1
+      bottleneck: 0.1
+      decoders.1: 0.1
+      decoders.3: 0.1
+      decoders.5: 0.1
       decoders.7: 0.0
       decoders.9: 0.0

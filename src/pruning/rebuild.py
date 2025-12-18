@@ -358,6 +358,58 @@ def plot_unet_schematic(enc_features, dec_features, bottleneck_out,
 
     plt.show()
 
+# def inspect_batchnorm_stats(model, tag=""):
+#     """
+#     Print running_mean and running_var statistics for the first BatchNorm2d layer.
+#     Useful for diagnosing BN issues after pruning.
+#     """
+#     print(f"\n🔍 BatchNorm stats {tag}")
+
+#     for m in model.modules():
+#         if isinstance(m, nn.BatchNorm2d):
+#             mean_abs = m.running_mean.abs().mean().item()
+#             var_mean = m.running_var.mean().item()
+#             num_tracked = (
+#                 m.num_batches_tracked.item()
+#                 if hasattr(m, "num_batches_tracked")
+#                 else None
+#             )
+
+#             print(
+#                 f"BN |mean(running_mean)| = {mean_abs:.3e}, "
+#                 f"mean(running_var) = {var_mean:.3e}, "
+#                 f"num_batches_tracked = {num_tracked}"
+#             )
+#             return
+
+#     print("⚠️ No BatchNorm2d layers found in model.")
+
+# def recalibrate_batchnorm(
+#     model,
+#     dataloader,
+#     device,
+#     num_batches=10,
+# ):
+#     """
+#     Recompute BatchNorm running statistics after pruning.
+
+#     Args:
+#         model: pruned model
+#         dataloader: training dataloader
+#         device: torch device
+#         num_batches: number of batches used for recalibration
+#     """
+#     model.train()
+
+#     with torch.no_grad():
+#         for i, batch in enumerate(dataloader):
+#             if i >= num_batches:
+#                 break
+
+#             # Adjust key if your dataset uses a different naming
+#             x = batch["image"].to(device, non_blocking=True)
+#             model(x)
+
 
 
 def rebuild_pruned_unet(model, masks, save_path=None):
@@ -378,6 +430,17 @@ def rebuild_pruned_unet(model, masks, save_path=None):
     pruned_model = build_pruned_unet(model, enc_features, dec_features=dec_features, bottleneck_out=bottleneck_out)
     #pruned_model = copy_pruned_weights(model, pruned_model, masks)
     pruned_model = copy_all_weights_with_pruning(model, pruned_model, masks, prunable_layers, verbose=False)
+
+    # inspect_batchnorm_stats(pruned_model, tag="before BN recalibration")
+
+    # recalibrate_batchnorm(
+    #     pruned_model,
+    #     train_loader,
+    #     device,
+    #     num_batches=10
+    # )
+
+    # inspect_batchnorm_stats(pruned_model, tag="after BN recalibration")
 
     plot_unet_schematic(enc_features, dec_features, bottleneck_out, 
                         in_ch=1, out_ch=4, figsize=(10, 6), title="U-Net Structure")
