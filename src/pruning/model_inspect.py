@@ -216,27 +216,60 @@ def model_to_dataframe_with_l1(
 # -----------------------------------------------------------------------------
 # 6️⃣ Visualization utilities for L1 distributions
 # -----------------------------------------------------------------------------
+import os
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
+
+
+def compute_global_hist_max(norms: dict, bins=40, logx=False):
+    """
+    Compute the maximum histogram bin count across all layers,
+    so all plots can share the same y-axis scale.
+    """
+    global_max = 0
+
+    for vals in norms.values():
+        vals = vals.cpu().numpy()
+
+        # If logx, avoid issues with zeros/negatives in binning
+        if logx:
+            vals = vals[vals > 0]
+
+        counts, _ = np.histogram(vals, bins=bins)
+        if counts.size > 0:
+            global_max = max(global_max, int(counts.max()))
+
+    # Avoid ylim(0, 0) if something weird happens
+    return max(global_max, 1)
+
 
 def plot_l1_histograms(norms: dict, save_dir=None, bins=40, logx=False):
     """
     Plot per-layer L1 magnitude histograms with summary statistics.
+    Y-axes are shared across layers using the largest histogram bin count.
     """
+    global_ymax = compute_global_hist_max(norms, bins=bins, logx=logx)
+
     for name, vals in norms.items():
         vals = vals.cpu().numpy()
+
         mean = np.mean(vals)
         median = np.median(vals)
         p25, p75 = np.percentile(vals, [25, 75])
         std = np.std(vals)
         minv, maxv = np.min(vals), np.max(vals)
 
-        plt.figure(figsize=(6,3))
+        plt.figure(figsize=(6, 3))
         sns.histplot(vals, bins=bins, color='steelblue', alpha=0.7, edgecolor='black')
+
         if logx:
             plt.xscale('log')
-        
+
+        # --- Shared y-axis scale across all layers ---
+        plt.ylim(0, global_ymax)
+
         # --- Vertical lines for key stats ---
         plt.axvline(mean, color='red', linestyle='--', linewidth=1, label=f"Mean = {mean:.2f}")
         plt.axvline(median, color='orange', linestyle='-', linewidth=1.2, label=f"Median = {median:.2f}")
@@ -261,7 +294,6 @@ def plot_l1_histograms(norms: dict, save_dir=None, bins=40, logx=False):
         plt.tight_layout()
 
         if save_dir:
-            import os
             os.makedirs(save_dir, exist_ok=True)
             path = os.path.join(save_dir, f"{name.replace('.', '_')}_hist.png")
             plt.savefig(path, dpi=150)
@@ -274,7 +306,7 @@ def plot_l1_summary(df: pd.DataFrame, save_path=None):
     """
     Plot global layer-wise L1 mean and spread (e.g., barplot or boxplot).
     """
-    plt.figure(figsize=(10,4))
+    plt.figure(figsize=(10, 4))
     sns.barplot(data=df, x="Layer", y="Mean L1")
     plt.xticks(rotation=90, fontsize=6)
     plt.tight_layout()
@@ -303,3 +335,87 @@ def inspect_model_l1(model, save_dir=None):
         plot_l1_summary(df)
 
     return df
+
+# def plot_l1_histograms(norms: dict, save_dir=None, bins=40, logx=False):
+#     """
+#     Plot per-layer L1 magnitude histograms with summary statistics.
+#     """
+#     for name, vals in norms.items():
+#         vals = vals.cpu().numpy()
+#         mean = np.mean(vals)
+#         median = np.median(vals)
+#         p25, p75 = np.percentile(vals, [25, 75])
+#         std = np.std(vals)
+#         minv, maxv = np.min(vals), np.max(vals)
+
+#         plt.figure(figsize=(6,3))
+#         sns.histplot(vals, bins=bins, color='steelblue', alpha=0.7, edgecolor='black')
+#         if logx:
+#             plt.xscale('log')
+        
+#         # --- Vertical lines for key stats ---
+#         plt.axvline(mean, color='red', linestyle='--', linewidth=1, label=f"Mean = {mean:.2f}")
+#         plt.axvline(median, color='orange', linestyle='-', linewidth=1.2, label=f"Median = {median:.2f}")
+#         plt.axvline(p25, color='gray', linestyle=':', linewidth=1)
+#         plt.axvline(p75, color='gray', linestyle=':', linewidth=1)
+
+#         # --- Annotate stats box ---
+#         textstr = (
+#             f"min = {minv:.2f}\n"
+#             f"max = {maxv:.2f}\n"
+#         )
+#         plt.gca().text(
+#             0.98, 0.95, textstr, transform=plt.gca().transAxes,
+#             fontsize=8, verticalalignment='top', horizontalalignment='right',
+#             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.6)
+#         )
+
+#         plt.title(name)
+#         plt.xlabel("Per-filter L1 norm")
+#         plt.ylabel("Count")
+#         plt.legend(fontsize=8)
+#         plt.tight_layout()
+
+#         if save_dir:
+#             import os
+#             os.makedirs(save_dir, exist_ok=True)
+#             path = os.path.join(save_dir, f"{name.replace('.', '_')}_hist.png")
+#             plt.savefig(path, dpi=150)
+#             plt.close()
+#         else:
+#             plt.show()
+
+
+# def plot_l1_summary(df: pd.DataFrame, save_path=None):
+#     """
+#     Plot global layer-wise L1 mean and spread (e.g., barplot or boxplot).
+#     """
+#     plt.figure(figsize=(10,4))
+#     sns.barplot(data=df, x="Layer", y="Mean L1")
+#     plt.xticks(rotation=90, fontsize=6)
+#     plt.tight_layout()
+#     if save_path:
+#         plt.savefig(save_path)
+#         plt.close()
+#     else:
+#         plt.show()
+
+
+# def inspect_model_l1(model, save_dir=None):
+#     """
+#     Compute, summarize, and visualize L1 distributions for a model.
+#     """
+#     norms = compute_l1_norms(model)
+#     stats = compute_l1_stats(norms)
+#     df = model_to_dataframe_with_l1(model, stats)
+
+#     if save_dir:
+#         os.makedirs(save_dir, exist_ok=True)
+#         df.to_csv(os.path.join(save_dir, "l1_summary.csv"), index=False)
+#         plot_l1_histograms(norms, save_dir=save_dir)
+#         plot_l1_summary(df, save_path=os.path.join(save_dir, "l1_means.png"))
+#     else:
+#         plot_l1_histograms(norms)
+#         plot_l1_summary(df)
+
+#     return df

@@ -161,7 +161,7 @@ def plot_layer_sensitivity(
     plt.show()
 
 if __name__ == "__main__":
-    ROOT = "/mnt/hdd/ttoxopeus/basic_UNet/results/UNet_ACDC/exp51"
+    ROOT = "/mnt/hdd/ttoxopeus/basic_UNet/results/UNet_ACDC/exp48"
     
     raw_results = load_pruning_results(ROOT)
 
