@@ -123,7 +123,7 @@ def run_pruning(cfg=None):
         num_samples = pruning_cfg.get("num_slices", 20)
         print(f"num slices: {num_samples}")
 
-        example_slices = load_random_slices_acdc(img_dir, num_slices=num_samples)
+        example_slices = load_random_slices_acdc(img_dir, num_slices=num_samples, seed=42)
 
         print(f"Loaded {len(example_slices)} example slices for correlation pruning.")
 

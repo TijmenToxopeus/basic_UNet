@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp54_stone
+  experiment_name: exp56_stone
   model_name: UNet_ACDC
   seed: 42
   device: cuda
@@ -36,8 +36,8 @@ evaluation:
     label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset100_STONE_small/labelsTs
     save_root: results
 pruning:
-  method: l1_norm
-  threshold: 0.8
+  method: correlation
+  threshold: 0.98
   num_slices: 10
   reinitialize_weights: null
   ckpt_path:
@@ -49,14 +49,14 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.01
-      encoders.1: 0.01
-      encoders.2: 0.01
-      encoders.3: 0.01
-      encoders.4: 0.01
-      bottleneck: 0.0
-      decoders.1: 0.0
-      decoders.3: 0.0
+      encoders.0: 0.0
+      encoders.1: 0.0
+      encoders.2: 0.0
+      encoders.3: 0.99
+      encoders.4: 0.99
+      bottleneck: 0.99
+      decoders.1: 0.99
+      decoders.3: 0.99
       decoders.5: 0.0
       decoders.7: 0.0
       decoders.9: 0.0
