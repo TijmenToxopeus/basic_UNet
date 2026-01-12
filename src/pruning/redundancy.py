@@ -492,7 +492,10 @@ def get_ratio_for_layer(layer_name, block_ratios):
             return ratio
     return 0.0
 
-def load_random_slices_acdc(img_dir, num_slices=20):
+def load_random_slices_acdc(img_dir, num_slices=20, seed=None):
+    if seed is not None:
+        np.random.seed(seed)
+
     transform = T.Compose([
         T.ToTensor(),
         T.Resize((256, 256)),

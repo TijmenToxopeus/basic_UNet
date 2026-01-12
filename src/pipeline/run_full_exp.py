@@ -648,7 +648,7 @@ import shutil
 CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
 BACKUP_PATH = CONFIG_PATH + ".backup"
 
-THRESHOLDS = [0.4, 0.3]
+THRESHOLDS = [.99, .98, .96, .94, 0.92, 0.88, 0.84, 0.8, 0.75, 0.7, 0.65, 0.6, 0.5, 0.4, 0.3, 0.2]
 
 # Your similarity-based method name (based on your config)
 SIM_METHOD = "correlation"
