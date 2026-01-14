@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp58
+  experiment_name: exp62
   model_name: UNet_ACDC
   seed: 42
   device: cuda
@@ -36,8 +36,8 @@ evaluation:
     label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
 pruning:
-  method: correlation
-  threshold: 0.99
+  method: l1_norm
+  threshold: 0.6
   num_slices: 20
   reinitialize_weights: null
   ckpt_path:
@@ -57,6 +57,6 @@ pruning:
       bottleneck: 0.99
       decoders.1: 0.99
       decoders.3: 0.99
-      decoders.5: 0.0
+      decoders.5: 0.85
       decoders.7: 0.0
       decoders.9: 0.0

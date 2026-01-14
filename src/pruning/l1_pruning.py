@@ -22,7 +22,7 @@ from src.pruning.model_inspect import (
     compute_l1_stats,
     get_pruning_masks_blockwise,
 )
-from src.pruning.redundancy import get_redundancy_masks, load_random_slices_acdc 
+from src.pruning.similar_feature_pruning import get_redundancy_masks, load_random_slices_acdc 
 from src.pruning.rebuild import rebuild_pruned_unet
 from src.utils.config import load_config
 from src.utils.paths import get_paths
