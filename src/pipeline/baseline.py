@@ -11,6 +11,7 @@ from src.training.train import train_model
 from src.training.eval import evaluate
 from src.utils.config import load_config
 from src.utils.paths import get_paths
+from src.utils.reproducibility import seed_everything
 
 
 def run_baseline_pipeline():
@@ -21,6 +22,10 @@ def run_baseline_pipeline():
     # ============================================================
     cfg, cfg_path = load_config(return_path=True)
     baseline_cfg = deepcopy(cfg)
+    exp_cfg = cfg["experiment"]
+    seed = exp_cfg.get("seed", 42)
+    deterministic = exp_cfg.get("deterministic", False)
+    seed_everything(seed, deterministic=deterministic)
 
     # ------------------------------------------------------------
     # 1️⃣ Train baseline model

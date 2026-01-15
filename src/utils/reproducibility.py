@@ -36,7 +36,7 @@ def seed_everything(seed: int, deterministic: bool = False) -> None:
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True)
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def seed_worker(worker_id: int) -> None:

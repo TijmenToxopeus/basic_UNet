@@ -1,7 +1,8 @@
 experiment:
-  experiment_name: exp62
+  experiment_name: exp64
   model_name: UNet_ACDC
   seed: 42
+  deterministic: true
   device: cuda
 train:
   phase: training
@@ -19,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 15
+    num_epochs: 100
     save_interval: 10
     loss_function: ce_dice
   paths:
@@ -57,6 +58,6 @@ pruning:
       bottleneck: 0.99
       decoders.1: 0.99
       decoders.3: 0.99
-      decoders.5: 0.85
+      decoders.5: 0.0
       decoders.7: 0.0
       decoders.9: 0.0

@@ -3,10 +3,14 @@ import torch
 import numpy as np
 import nibabel as nib
 import torchio as tio
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms.functional as TF
-import random
 
+from src.utils.reproducibility import (
+    seed_everything,
+    seed_worker,
+    make_generator,
+)
 
 # ============================================================
 # --- TorchIO Augmentation Pipeline ---
@@ -16,97 +20,58 @@ class SafeFlip(tio.Transform):
     A TorchIO transform that replaces RandomFlip
     by using torch.flip (which never produces negative strides).
     """
-
     def __init__(self, axes=(1, 2), p=0.5):
         super().__init__(p=p)
         self.axes = axes
 
     def apply_transform(self, subject):
-        for name, image in subject.get_images_dict().items():
-            data = image.data  # [C, H, W] or [1, C, H, W]
-
-            # axes for flip = (H, W)
-            torch_axes = tuple(a + 1 for a in self.axes)  # shift because dim 0 = batch
-
-            flipped = torch.flip(data, dims=torch_axes).clone()
-
-            image.set_data(flipped)
-
+        for _, image in subject.get_images_dict().items():
+            data = image.data
+            torch_axes = tuple(a + 1 for a in self.axes)
+            image.set_data(torch.flip(data, dims=torch_axes).clone())
         return subject
 
-# def get_torchio_augmentation_pipeline():
-#     """Return a TorchIO augmentation pipeline for MRI-like images."""
-#     return tio.Compose([
-#         # # Resize to larger resolution first
-#         # tio.Resize((1, 320, 320)),
-
-#         # # Central crop to focus on heart
-#         # tio.CropOrPad((1, 256, 256)),
-#         tio.RandomElasticDeformation(num_control_points=7, max_displacement=3, p=0.3),  # elastic deformation
-#         tio.RandomAffine(scales=(0.7, 1.3), degrees=20,              # rotation/scaling
-#                          translation=5, p=0.6),
-#         tio.RandomNoise(mean=0, std=(0, 0.05), p=0.25),              # Gaussian noise
-#         tio.RandomBiasField(coefficients=0.3, p=0.3),                 # MRI intensity bias
-#         tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.4),   
-#         #SafeFlip(axes=(1, 2), p=0.2) # gamma correction
-#     ])
 
 def get_torchio_augmentation_pipeline():
     return tio.Compose([
-        # ----- GEOMETRIC -----
-        tio.RandomAffine(
-            scales=(0.9, 1.1),
-            degrees=10,
-            translation=5,
-            p=0.5
-        ),
-        tio.RandomElasticDeformation(
-            num_control_points=7,
-            max_displacement=4,
-            p=0.3
-        ),
-
-        # ----- INTENSITY TRANSFORMS (MOST IMPORTANT FOR CONTRAST!!) -----
-        tio.RandomGamma(log_gamma=(-0.5, 0.5), p=0.4),       # stronger gamma variation
-        tio.RandomBiasField(coefficients=0.4, p=0.3),        # MRI inhomogeneity
-        tio.RandomNoise(std=(0, 0.05), p=0.25),              # simulate noisy scanners
-        tio.RandomBlur(std=(0.1, 1.0), p=0.2),               # simulate lower resolution
-
-        # ----- SIMPLE BUT EFFECTIVE -----
-        # tio.RandomFlip(axes=(0,), p=0.5),                    # horizontal
-        # tio.RandomFlip(axes=(1,), p=0.5),                    # vertical
+        tio.RandomAffine(scales=(0.9, 1.1), degrees=10, translation=5, p=0.5),
+        tio.RandomElasticDeformation(num_control_points=7, max_displacement=4, p=0.3),
+        tio.RandomGamma(log_gamma=(-0.5, 0.5), p=0.4),
+        tio.RandomBiasField(coefficients=0.4, p=0.3),
+        tio.RandomNoise(std=(0, 0.05), p=0.25),
+        tio.RandomBlur(std=(0.1, 1.0), p=0.2),
     ])
 
 
-
 def summarize_torchio_pipeline(pipeline):
-    summary = []
-    for transform in pipeline.transforms:
-        params = {k: v for k, v in vars(transform).items() if not k.startswith('_')}
-        summary.append({"name": transform.__class__.__name__, **params})
-    return summary
+    return [
+        {"name": t.__class__.__name__, **{k: v for k, v in vars(t).items() if not k.startswith("_")}}
+        for t in pipeline.transforms
+    ]
 
 
 # ============================================================
-# --- Dataset Class ---
+# --- Dataset (Patient/Volume-level split safe) ---
 # ============================================================
 class SegmentationDataset(Dataset):
     """
     Dataset loader for 2D slices from ACDC.
-    For each 3D volume, loads a set of central slices (default: 30).
+
+    Patient-level splitting is supported by passing a fixed list of
+    (image_path, label_path) pairs into the dataset.
     """
 
     def __init__(
         self,
-        img_dir,
-        lbl_dir,
+        img_lbl_pairs,
         slice_axis=2,
         normalize=True,
         target_size=(256, 256),
         augment=False,
         num_slices_per_volume=30,
-        use_cache=False
+        use_cache=False,
     ):
+        self.img_lbl_pairs = list(img_lbl_pairs)
         self.slice_axis = slice_axis
         self.normalize = normalize
         self.target_size = target_size
@@ -114,102 +79,100 @@ class SegmentationDataset(Dataset):
         self.num_slices_per_volume = num_slices_per_volume
         self.use_cache = use_cache
 
-        self.img_paths = sorted(
-            [os.path.join(img_dir, f) for f in os.listdir(img_dir) if f.endswith(".nii.gz")]
-        )
-        self.lbl_paths = sorted(
-            [os.path.join(lbl_dir, f) for f in os.listdir(lbl_dir) if f.endswith(".nii.gz")]
-        )
-        assert len(self.img_paths) == len(self.lbl_paths), "Number of images and labels must match!"
-
-        # Optional cache for faster loading
         self.cache = {} if self.use_cache else None
 
-        # Preload slice indices
+        # Build slice-level samples, but ONLY from the provided patient list
         self.samples = []
-        for img_path, lbl_path in zip(self.img_paths, self.lbl_paths):
-            img_nii = nib.load(img_path)
-            num_slices = img_nii.shape[self.slice_axis]
+        for img_path, lbl_path in self.img_lbl_pairs:
+            num_slices = nib.load(img_path).shape[self.slice_axis]
 
             if num_slices_per_volume is None or num_slices <= num_slices_per_volume:
-                slice_indices = list(range(num_slices))
+                slice_indices = range(num_slices)
             else:
                 center = num_slices // 2
                 half = num_slices_per_volume // 2
                 start = max(center - half, 0)
                 end = min(center + half, num_slices)
-                slice_indices = list(range(start, end))
+                slice_indices = range(start, end)
 
             for s in slice_indices:
                 self.samples.append((img_path, lbl_path, s))
 
-        # Initialize TorchIO augmentation pipeline if requested
         self.torchio_transform = get_torchio_augmentation_pipeline() if augment else None
 
     def __len__(self):
         return len(self.samples)
 
     def _load_volume(self, path):
-        """Load from cache or disk."""
         if self.use_cache:
             if path not in self.cache:
                 self.cache[path] = nib.load(path).get_fdata()
             return self.cache[path]
-        else:
-            return nib.load(path).get_fdata()
+        return nib.load(path).get_fdata()
 
     def __getitem__(self, idx):
         img_path, lbl_path, s = self.samples[idx]
 
-        # Load volume or from cache
-        img = self._load_volume(img_path)
-        lbl = self._load_volume(lbl_path)
+        img = np.take(self._load_volume(img_path), s, axis=self.slice_axis)
+        lbl = np.take(self._load_volume(lbl_path), s, axis=self.slice_axis)
 
-        # Extract 2D slice
-        img = np.take(img, s, axis=self.slice_axis)
-        lbl = np.take(lbl, s, axis=self.slice_axis)
-
-        # Normalize image
         if self.normalize:
             img = np.clip(img, np.percentile(img, 1), np.percentile(img, 99))
-            img = (img - np.min(img)) / (np.max(img) - np.min(img) + 1e-8)
+            img = (img - img.min()) / (img.max() - img.min() + 1e-8)
 
-        # Convert to torch tensors
         img = torch.from_numpy(img).float().unsqueeze(0)  # [1, H, W]
         lbl = torch.from_numpy(lbl).long()                # [H, W]
 
-        # Resize both
         img = TF.resize(img, self.target_size, antialias=True)
         lbl = TF.resize(
             lbl.unsqueeze(0).float(),
             self.target_size,
-            interpolation=TF.InterpolationMode.NEAREST
+            interpolation=TF.InterpolationMode.NEAREST,
         ).squeeze(0).long()
 
-        # ---------- TorchIO Augmentations ----------
-        # if self.torchio_transform is not None:
-        #     subject = tio.Subject(
-        #         image=tio.ScalarImage(tensor=img.unsqueeze(0)),  # add batch dim
-        #         label=tio.LabelMap(tensor=lbl.unsqueeze(0))
-        #     )
-        #     transformed = self.torchio_transform(subject)
-        #     img = transformed.image.data.squeeze(0)
-        #     lbl = transformed.label.data.squeeze(0).long()
         if self.torchio_transform is not None:
             subject = tio.Subject(
                 image=tio.ScalarImage(tensor=img.unsqueeze(0)),               # [1, 1, H, W]
-                label=tio.LabelMap(tensor=lbl.unsqueeze(0).unsqueeze(0))      # [1, 1, H, W]
+                label=tio.LabelMap(tensor=lbl.unsqueeze(0).unsqueeze(0)),      # [1, 1, H, W]
             )
-            transformed = self.torchio_transform(subject)
-            img = transformed.image.data.squeeze(0)                           # → [1, H, W]
-            lbl = transformed.label.data.squeeze().long()                     # → [H, W]
-
+            subject = self.torchio_transform(subject)
+            img = subject.image.data.squeeze(0)                               # [1, H, W]
+            lbl = subject.label.data.squeeze().long()                         # [H, W]
 
         return img, lbl
 
 
 # ============================================================
-# --- DataLoader Builder ---
+# --- Patient-level split helper ---
+# ============================================================
+def _collect_img_lbl_pairs(img_dir, lbl_dir):
+    img_paths = sorted([os.path.join(img_dir, f) for f in os.listdir(img_dir) if f.endswith(".nii.gz")])
+    lbl_paths = sorted([os.path.join(lbl_dir, f) for f in os.listdir(lbl_dir) if f.endswith(".nii.gz")])
+    assert len(img_paths) == len(lbl_paths), "Number of images and labels must match!"
+    return list(zip(img_paths, lbl_paths))
+
+
+def _patient_level_split(pairs, val_ratio, seed):
+    """
+    Split at the patient/volume level.
+    """
+    n_total = len(pairs)
+    n_val = int(round(n_total * val_ratio))
+    n_train = n_total - n_val
+
+    g = make_generator(seed)
+    perm = torch.randperm(n_total, generator=g).tolist()
+
+    train_idx = perm[:n_train]
+    val_idx = perm[n_train:]
+
+    train_pairs = [pairs[i] for i in train_idx]
+    val_pairs = [pairs[i] for i in val_idx]
+    return train_pairs, val_pairs
+
+
+# ============================================================
+# --- DataLoader Builder (Patient-level split) ---
 # ============================================================
 def get_train_val_loaders(
     img_dir,
@@ -218,87 +181,61 @@ def get_train_val_loaders(
     val_ratio=0.2,
     shuffle=True,
     seed=42,
-    num_slices_per_volume=20
+    num_slices_per_volume=20,
+    num_workers=0,
+    deterministic=False,
 ):
     """
-    Returns train and validation DataLoaders.
-    Uses two separate dataset instances so that:
-      - training data has augmentations,
-      - validation data does not.
-    Also returns an augmentation summary for logging.
+    Returns train and validation DataLoaders with PATIENT-LEVEL splitting.
     """
 
-    # --- Create two *independent* datasets ---
+    seed_everything(seed, deterministic=deterministic)
+
+    pairs = _collect_img_lbl_pairs(img_dir, lbl_dir)
+    train_pairs, val_pairs = _patient_level_split(pairs, val_ratio=val_ratio, seed=seed)
+
     train_dataset = SegmentationDataset(
-        img_dir,
-        lbl_dir,
+        train_pairs,
         augment=True,
-        num_slices_per_volume=num_slices_per_volume
+        num_slices_per_volume=num_slices_per_volume,
     )
     val_dataset = SegmentationDataset(
-        img_dir,
-        lbl_dir,
-        augment=False,  # explicitly disable augmentations
-        num_slices_per_volume=num_slices_per_volume
+        val_pairs,
+        augment=False,
+        num_slices_per_volume=num_slices_per_volume,
     )
 
-    # --- Split indices reproducibly ---
-    val_size = int(len(train_dataset) * val_ratio)
-    train_size = len(train_dataset) - val_size
-    generator = torch.Generator().manual_seed(seed)
+    loader_gen = make_generator(seed)
 
-    train_subset, _ = random_split(train_dataset, [train_size, val_size], generator=generator)
-    _, val_subset = random_split(val_dataset, [train_size, val_size], generator=generator)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        worker_init_fn=seed_worker if num_workers > 0 else None,
+        generator=loader_gen,
+        persistent_workers=num_workers > 0,
+        pin_memory=True,
+    )
 
-    # --- Build DataLoaders ---
-    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=shuffle)
-    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        worker_init_fn=seed_worker if num_workers > 0 else None,
+        generator=loader_gen,
+        persistent_workers=num_workers > 0,
+        pin_memory=True,
+    )
 
-    # --- Summarize augmentation pipeline (for logging) ---
-    augmentation_summary = None
-    if hasattr(train_dataset, "torchio_transform") and train_dataset.torchio_transform is not None:
-        augmentation_summary = summarize_torchio_pipeline(train_dataset.torchio_transform)
+    augmentation_summary = (
+        summarize_torchio_pipeline(train_dataset.torchio_transform)
+        if train_dataset.torchio_transform is not None
+        else None
+    )
 
     return train_loader, val_loader, augmentation_summary
-
-
-
-# def get_train_val_loaders(
-#     img_dir,
-#     lbl_dir,
-#     batch_size=2,
-#     val_ratio=0.2,
-#     shuffle=True,
-#     seed=42,
-#     num_slices_per_volume=20
-# ):
-#     """
-#     Returns train and validation DataLoaders.
-#     """
-#     dataset = SegmentationDataset(
-#         img_dir,
-#         lbl_dir,
-#         augment=True,
-#         num_slices_per_volume=num_slices_per_volume
-#     )
-
-#     val_size = int(len(dataset) * val_ratio)
-#     train_size = len(dataset) - val_size
-#     generator = torch.Generator().manual_seed(seed)
-
-#     train_ds, val_ds = random_split(dataset, [train_size, val_size], generator=generator)
-#     val_ds.dataset.augment = False
-#     val_ds.dataset.torchio_transform = None  # disable augmentations for val
-
-#     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=shuffle)
-#     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-
-#         # --- Summarize augmentation pipeline (for logging) ---
-#     augmentation_summary = None
-#     if hasattr(dataset, "torchio_transform") and dataset.torchio_transform is not None:
-#         augmentation_summary = summarize_torchio_pipeline(dataset.torchio_transform)
-
-#     return train_loader, val_loader, augmentation_summary
 
 
 # ============================================================
@@ -308,9 +245,16 @@ if __name__ == "__main__":
     img_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr"
     lbl_dir = "/media/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTr"
 
-    train_loader, val_loader = get_train_val_loaders(img_dir, lbl_dir)
+    train_loader, val_loader, aug = get_train_val_loaders(
+        img_dir,
+        lbl_dir,
+        seed=42,
+        num_workers=0,
+        deterministic=True,
+    )
 
     imgs, lbls = next(iter(train_loader))
     print("Image batch:", imgs.shape)
     print("Label batch:", lbls.shape)
     print("Unique labels:", torch.unique(lbls))
+    print("Augmentations:", aug)
