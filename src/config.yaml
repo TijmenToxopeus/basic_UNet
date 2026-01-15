@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp65
+  experiment_name: exp66
   model_name: UNet_ACDC
   seed: 42
   deterministic: true

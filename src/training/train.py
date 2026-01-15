@@ -330,7 +330,7 @@ import wandb
 # --- Project imports ---
 from src.models.unet import UNet
 from src.training.loss import get_loss_function
-from src.training.loop import train_one_epoch, validate
+from src.training.training_loop import train_one_epoch, validate
 from src.training.metrics import dice_score, iou_score
 from src.training.data_loader import get_train_val_loaders
 from src.pruning.rebuild import load_full_pruned_model
@@ -341,6 +341,8 @@ from src.utils.config import load_config
 from src.utils.paths import get_paths
 from src.utils.wandb_utils import setup_wandb
 from src.utils.reproducibility import seed_everything
+from src.utils.run_summary import base_run_info, attach_profile, write_json
+
 
 
 # ------------------------------------------------------------
@@ -544,7 +546,13 @@ def train_model(cfg=None):
     # --- MODEL PROFILING ---
     # ============================================================
     prof = profile_model(model, in_ch=in_ch)
-    wandb.log({"params_m": prof["params_m"], "flops_g": prof["flops_g"], "inference_ms": prof["inference_ms"]})
+    wandb.log(
+        {
+            "params_m": prof["params_m"],
+            "flops_g": prof["flops_g"],
+            "inference_ms": prof["inference_ms"],
+        }
+    )
 
     # ============================================================
     # --- SAVE TRAINING CURVES ---
@@ -553,32 +561,38 @@ def train_model(cfg=None):
     wandb.log({"training_curve": wandb.Image(plot_path)})
 
     # ============================================================
-    # --- SAVE TRAINING SUMMARY ---
+    # --- SAVE RUN SUMMARY (shared schema) ---
     # ============================================================
-    summary = {
-        "model_name": exp_cfg["model_name"],
-        "experiment": exp_cfg["experiment_name"],
+    summary = base_run_info(cfg, stage="train")
+    summary["train"] = {
         "phase": phase,
-        "seed": seed,
-        "deterministic": deterministic,
         "epochs": epochs,
         "learning_rate": lr,
         "batch_size": batch_size,
         "device": str(device),
-        "params_m": prof["params_m"],
-        "flops_g": prof["flops_g"],
-        "inference_ms": prof["inference_ms"],
-        "vram_mb_last_epoch": metrics_log["vram_max"][-1] if metrics_log["vram_max"] else float("nan"),
-        "final_train_loss": float(metrics_log["train_loss_mean"][-1]) if metrics_log["train_loss_mean"] else float("nan"),
-        "final_val_dice": float(metrics_log["val_dice_mean"][-1]) if metrics_log["val_dice_mean"] else float("nan"),
-        "final_val_iou": float(metrics_log["val_iou_mean"][-1]) if metrics_log["val_iou_mean"] else float("nan"),
+        "final": {
+            "train_loss": float(metrics_log["train_loss_mean"][-1]) if metrics_log["train_loss_mean"] else float("nan"),
+            "val_dice": float(metrics_log["val_dice_mean"][-1]) if metrics_log["val_dice_mean"] else float("nan"),
+            "val_iou": float(metrics_log["val_iou_mean"][-1]) if metrics_log["val_iou_mean"] else float("nan"),
+            "vram_epoch_peak_mb": float(metrics_log["vram_max"][-1]) if metrics_log["vram_max"] else float("nan"),
+        },
+        "artifacts": {
+            "final_model": final_model_path,
+            "training_curve": plot_path,
+        },
         "augmentation": {
             "library": "torchio",
             "transforms": augmentation_summary if augmentation_summary else "none",
         },
     }
 
-    save_json(summary, os.path.join(save_dir, "train_summary.json"))
+    attach_profile(summary, prof)
+
+    summary_path = write_json(os.path.join(save_dir, "run_summary.json"), summary)
+    wandb.save(str(summary_path))
+
+    # (optional) keep your old filename for backwards compatibility
+    # save_json(summary, os.path.join(save_dir, "train_summary.json"))
 
     print("✅ Training complete.")
     run.finish()
