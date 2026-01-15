@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp66
+  experiment_name: exp61
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -20,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 3
+    num_epochs: 120
     save_interval: 10
     loss_function: ce_dice
   paths:
@@ -40,7 +40,7 @@ pruning:
   method: l1_norm
   threshold: 0.6
   num_slices: 20
-  reinitialize_weights: null
+  reinitialize_weights: random
   ckpt_path:
     subfolder: baseline
     ckpt_name: final_model.pth

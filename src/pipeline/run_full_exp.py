@@ -1,191 +1,3 @@
-# import subprocess
-# import yaml
-# import shutil
-# import os
-
-# CONFIG_PATH = "/media/ttoxopeus/basic_UNet/src/config.yaml"
-# BACKUP_PATH = CONFIG_PATH + ".backup"
-
-# def run(cmd):
-#     print(f"\n🚀 Running: {cmd}\n")
-#     result = subprocess.run(cmd, shell=True)
-#     if result.returncode != 0:
-#         raise RuntimeError(f"❌ Command failed: {cmd}")
-
-
-# def load_config(path=CONFIG_PATH):
-#     with open(path, "r") as f:
-#         return yaml.safe_load(f)
-
-
-# def save_config(cfg, path=CONFIG_PATH):
-#     with open(path, "w") as f:
-#         yaml.dump(cfg, f, sort_keys=False)
-
-
-# def run_baseline():
-#     print("\n===============================")
-#     print("   🧱 RUNNING BASELINE")
-#     print("===============================\n")
-
-#     # Run baseline WITHOUT touching config.yaml
-#     run("python -m src.pipeline.baseline")
-
-
-# def run_pruned(mode):
-#     print("\n===============================")
-#     print(f"   ✂️ RUNNING PRUNED ({mode})")
-#     print("===============================\n")
-
-#     # --- Load ORIGINAL config from backup, not modified one ---
-#     cfg = load_config(BACKUP_PATH)
-
-#     # --- Modify in memory ---
-#     cfg["pruning"]["reinitialize_weights"] = (None if mode == "none" else mode)
-#     cfg["train"]["parameters"]["learning_rate"] = 2e-3
-#     cfg["train"]["parameters"]["num_epochs"] = 15
-
-#     # --- Save modified config temporarily ---
-#     save_config(cfg)
-
-#     # --- Run pruning with modified config ---
-#     run("python -m src.pipeline.pruned")
-
-
-# def main():
-
-#     # --- Backup original config EXACTLY ---
-#     shutil.copy(CONFIG_PATH, BACKUP_PATH)
-#     print("📂 Backed up original config.yaml → config.yaml.backup")
-
-#     # -------------------------------------
-#     # 1) BASELINE RUN (config untouched)
-#     # -------------------------------------
-#     run_baseline()
-
-#     # -------------------------------------
-#     # 2) PRUNED RUNS (config modified TEMPORARILY)
-#     # -------------------------------------
-#     run_pruned("none")
-#     run_pruned("random")
-#     run_pruned("rewind")
-
-#     # --- Restore EXACT original config (byte-for-byte) ---
-#     shutil.copy(BACKUP_PATH, CONFIG_PATH)
-#     print("\n🔄 Restored original config.yaml")
-
-#     print("\n🎉 FULL EXPERIMENT COMPLETED\n")
-
-
-# if __name__ == "__main__":
-#     main()
-
-
-# import subprocess
-# import yaml
-# import shutil
-# import os
-
-# CONFIG_PATH = "/media/ttoxopeus/basic_UNet/src/config.yaml"
-# BACKUP_PATH = CONFIG_PATH + ".backup"
-
-# # The different pruning ratios to sweep for encoders.4
-# PRUNING_RATIOS = [0.01, 0.05, 0.10, 0.20, 0.40, 0.50]
-
-# # The weight initialization modes for pruning
-# PRUNE_MODES = ["none", "random", "rewind"]
-
-
-# def run(cmd):
-#     """Utility to run shell commands."""
-#     print(f"\n🚀 Running: {cmd}\n")
-#     result = subprocess.run(cmd, shell=True)
-#     if result.returncode != 0:
-#         raise RuntimeError(f"❌ Command failed: {cmd}")
-
-
-# def load_config(path=CONFIG_PATH):
-#     with open(path, "r") as f:
-#         return yaml.safe_load(f)
-
-
-# def save_config(cfg, path=CONFIG_PATH):
-#     with open(path, "w") as f:
-#         yaml.dump(cfg, f, sort_keys=False)
-
-
-# def run_baseline():
-#     print("\n===============================")
-#     print("   🧱 RUNNING BASELINE")
-#     print("===============================\n")
-
-#     # Run baseline WITHOUT touching config.yaml
-#     run("python -m src.pipeline.baseline")
-
-
-# def run_pruned(mode, enc4_ratio):
-#     """
-#     mode:  "none", "random", or "rewind"
-#     enc4_ratio: pruning ratio for encoders.4 block
-#     """
-#     print("\n===============================")
-#     print(f"   ✂️ RUNNING PRUNED: mode={mode}, encoders.4={enc4_ratio}")
-#     print("===============================\n")
-
-#     # --- Load ORIGINAL config from backup ---
-#     cfg = load_config(BACKUP_PATH)
-
-#     # --- Modify pruning settings ---
-#     cfg["pruning"]["reinitialize_weights"] = (None if mode == "none" else mode)
-
-#     # Override only encoders.4 ratio — keep others untouched
-#     if "block_ratios" not in cfg["pruning"]:
-#         cfg["pruning"]["block_ratios"] = {}
-
-#     cfg["pruning"]["block_ratios"]["encoders.4"] = float(enc4_ratio)
-
-#     # --- Training hyperparameters for pruning ---
-#     cfg["train"]["parameters"]["num_epochs"] = 30
-
-#     # --- Save modified config temporarily ---
-#     save_config(cfg)
-
-#     # --- Run pruning with modified config ---
-#     run("python -m src.pipeline.pruned")
-
-
-# def main():
-
-#     # --- Backup original config EXACTLY ---
-#     shutil.copy(CONFIG_PATH, BACKUP_PATH)
-#     print("📂 Backed up original config.yaml → config.yaml.backup")
-
-#     # -------------------------------------
-#     # 1) BASELINE RUN (only once)
-#     # -------------------------------------
-#     run_baseline()
-
-#     # -------------------------------------
-#     # 2) SWEEP OVER PRUNING RATIOS
-#     # -------------------------------------
-#     for ratio in PRUNING_RATIOS:
-#         print(f"\n🔄 Starting pruning-ratio sweep: encoders.4 = {ratio}\n")
-
-#         for mode in PRUNE_MODES:
-#             run_pruned(mode, ratio)
-
-#     # --- Restore EXACT original config ---
-#     shutil.copy(BACKUP_PATH, CONFIG_PATH)
-#     print("\n🔄 Restored original config.yaml")
-
-#     print("\n🎉 FULL EXPERIMENT COMPLETED\n")
-
-
-# if __name__ == "__main__":
-#     main()
-
-
-
 ## different ratios and reinit sweep for one layer
 
 # import subprocess
@@ -636,10 +448,85 @@
 #     main()
 
 
-### CORRELATION PRUNING FOR DIFFERENT TRESHOLDS USES BLOCK RATIOS DEFINED IN THE CONFIG
+# ### CORRELATION PRUNING FOR DIFFERENT TRESHOLDS USES BLOCK RATIOS DEFINED IN THE CONFIG
 
-### SIMILAR-FEATURE (CORRELATION) THRESHOLD SWEEP
-# Keeps your block_ratios EXACTLY as in config (only middle layers pruned)
+# ### SIMILAR-FEATURE (CORRELATION) THRESHOLD SWEEP
+# # Keeps your block_ratios EXACTLY as in config (only middle layers pruned)
+
+# import subprocess
+# import yaml
+# import shutil
+
+# CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
+# BACKUP_PATH = CONFIG_PATH + ".backup"
+
+# THRESHOLDS = [.99, .98, .96, .94, 0.92, 0.88, 0.84, 0.8, 0.75, 0.7, 0.65, 0.6, 0.5, 0.4, 0.3, 0.2]
+
+# # Your similarity-based method name (based on your config)
+# SIM_METHOD = "correlation"
+
+
+# def run(cmd: str):
+#     print(f"\n🚀 Running: {cmd}\n")
+#     result = subprocess.run(cmd, shell=True)
+#     if result.returncode != 0:
+#         raise RuntimeError(f"❌ Command failed: {cmd}")
+
+
+# def load_config(path: str):
+#     with open(path, "r") as f:
+#         return yaml.safe_load(f)
+
+
+# def save_config(cfg, path: str = CONFIG_PATH):
+#     with open(path, "w") as f:
+#         yaml.dump(cfg, f, sort_keys=False)
+
+
+# def run_similarity_experiment(threshold: float):
+#     print("\n===============================")
+#     print(f"🔥 Similar-feature pruning | method={SIM_METHOD} | threshold={threshold}")
+#     print("===============================\n")
+
+#     # Load clean config (keeps your middle-layer block_ratios unchanged)
+#     cfg = load_config(BACKUP_PATH)
+
+#     # Set similarity pruning method + threshold
+#     cfg["pruning"]["method"] = SIM_METHOD
+#     cfg["pruning"]["threshold"] = float(threshold)
+
+#     # Ensure no re-init (optional, but explicit)
+#     cfg["pruning"]["reinitialize_weights"] = None
+
+#     # (IMPORTANT) Do NOT touch block_ratios here.
+#     # Your backup config already contains the correct "middle layers = 0.99" setup.
+
+#     save_config(cfg)
+
+#     run("python -m src.pipeline.pruned")
+#     print(f"✅ Completed similarity pruning @ threshold {threshold}\n")
+
+
+# def main():
+#     # Backup original config once
+#     shutil.copy(CONFIG_PATH, BACKUP_PATH)
+#     print("📂 Backed up original config.yaml → config.yaml.backup")
+
+#     for thr in THRESHOLDS:
+#         run_similarity_experiment(thr)
+
+#     # Restore
+#     shutil.copy(BACKUP_PATH, CONFIG_PATH)
+#     print("\n🔄 Restored original config.yaml")
+#     print("\n🎉 THRESHOLD SWEEP COMPLETED\n")
+
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+### L1NORM PRUNING, TEST DIFFERENT REINIT MODES, USES CURRENT BLOCK RATIOS
 
 import subprocess
 import yaml
@@ -648,10 +535,15 @@ import shutil
 CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
 BACKUP_PATH = CONFIG_PATH + ".backup"
 
-THRESHOLDS = [.99, .98, .96, .94, 0.92, 0.88, 0.84, 0.8, 0.75, 0.7, 0.65, 0.6, 0.5, 0.4, 0.3, 0.2]
+# Experiment settings
+BASELINE_EPOCHS = 120
+PRUNE_METHOD = "l1_norm"
 
-# Your similarity-based method name (based on your config)
-SIM_METHOD = "correlation"
+# Try each weight reinit mode
+# None  -> keep weights
+# "random" -> random reinit after rebuild
+# "rewind" -> rebuild using rewind checkpoint weights
+REINIT_MODES = [None, "random", "rewind"]
 
 
 def run(cmd: str):
@@ -671,28 +563,57 @@ def save_config(cfg, path: str = CONFIG_PATH):
         yaml.dump(cfg, f, sort_keys=False)
 
 
-def run_similarity_experiment(threshold: float):
+def run_baseline_training():
     print("\n===============================")
-    print(f"🔥 Similar-feature pruning | method={SIM_METHOD} | threshold={threshold}")
+    print(f"🏋️  Baseline training | epochs={BASELINE_EPOCHS}")
     print("===============================\n")
 
-    # Load clean config (keeps your middle-layer block_ratios unchanged)
     cfg = load_config(BACKUP_PATH)
 
-    # Set similarity pruning method + threshold
-    cfg["pruning"]["method"] = SIM_METHOD
-    cfg["pruning"]["threshold"] = float(threshold)
+    # Train baseline for BASELINE_EPOCHS
+    cfg["train"]["phase"] = "training"
+    cfg["train"]["parameters"]["num_epochs"] = int(BASELINE_EPOCHS)
 
-    # Ensure no re-init (optional, but explicit)
-    cfg["pruning"]["reinitialize_weights"] = None
-
-    # (IMPORTANT) Do NOT touch block_ratios here.
-    # Your backup config already contains the correct "middle layers = 0.99" setup.
+    # Make sure evaluation phase won't break anything (optional)
+    cfg.setdefault("evaluation", {})
+    cfg["evaluation"]["phase"] = "baseline_evaluation"
 
     save_config(cfg)
+    run("python -m src.pipeline.baseline")
+    print("✅ Completed baseline training\n")
 
+
+def run_pruned_experiment(reinit_mode):
+    print("\n===============================")
+    print(f"✂️  L1 pruning | method={PRUNE_METHOD} | reinit={reinit_mode}")
+    print("===============================\n")
+
+    # Always start from clean backup config (keeps your block_ratios unchanged)
+    cfg = load_config(BACKUP_PATH)
+
+    # Ensure pruning is L1 norm
+    cfg["pruning"]["method"] = PRUNE_METHOD
+
+    # Set reinit mode
+    cfg["pruning"]["reinitialize_weights"] = reinit_mode
+
+    # IMPORTANT: do not touch cfg["pruning"]["ratios"]["block_ratios"]
+    # Your backup config already contains the ratios you want.
+
+    # For rewind: ensure the training pipeline actually saved a rewind checkpoint.
+    # Your paths logic auto-detects epoch*.pth if rewind_ckpt is not set.
+    # So make sure your baseline training produced at least one epoch_*.pth.
+    # If your save_interval is > BASELINE_EPOCHS, rewind won't exist.
+    # (You can set cfg["train"]["parameters"]["save_interval"] accordingly in the backup config.)
+
+    # Run full pruned pipeline (prune -> eval -> retrain -> eval)
+    cfg["train"]["phase"] = "retraining"
+    cfg["train"]["parameters"]["num_epochs"] = 25
+    cfg["evaluation"]["phase"] = "pruned_evaluation"
+
+    save_config(cfg)
     run("python -m src.pipeline.pruned")
-    print(f"✅ Completed similarity pruning @ threshold {threshold}\n")
+    print(f"✅ Completed pruning run | reinit={reinit_mode}\n")
 
 
 def main():
@@ -700,13 +621,19 @@ def main():
     shutil.copy(CONFIG_PATH, BACKUP_PATH)
     print("📂 Backed up original config.yaml → config.yaml.backup")
 
-    for thr in THRESHOLDS:
-        run_similarity_experiment(thr)
+    try:
+        # 1) Train baseline once
+        run_baseline_training()
 
-    # Restore
-    shutil.copy(BACKUP_PATH, CONFIG_PATH)
-    print("\n🔄 Restored original config.yaml")
-    print("\n🎉 THRESHOLD SWEEP COMPLETED\n")
+        # 2) Sweep reinit modes for L1 pruning
+        for mode in REINIT_MODES:
+            run_pruned_experiment(mode)
+
+    finally:
+        # Always restore original config
+        shutil.copy(BACKUP_PATH, CONFIG_PATH)
+        print("\n🔄 Restored original config.yaml")
+        print("\n🎉 REINIT SWEEP COMPLETED\n")
 
 
 if __name__ == "__main__":

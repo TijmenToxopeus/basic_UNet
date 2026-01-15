@@ -1,7 +1,8 @@
 experiment:
-  experiment_name: exp58
+  experiment_name: exp61
   model_name: UNet_ACDC
   seed: 42
+  deterministic: true
   device: cuda
 train:
   phase: training
@@ -19,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 15
+    num_epochs: 100
     save_interval: 10
     loss_function: ce_dice
   paths:
@@ -36,10 +37,10 @@ evaluation:
     label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
 pruning:
-  method: correlation
-  threshold: 0.99
+  method: l1_norm
+  threshold: 0.6
   num_slices: 20
-  reinitialize_weights: null
+  reinitialize_weights: random
   ckpt_path:
     subfolder: baseline
     ckpt_name: final_model.pth
