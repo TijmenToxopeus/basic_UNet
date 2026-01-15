@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp64
+  experiment_name: exp65
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -20,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 100
+    num_epochs: 3
     save_interval: 10
     loss_function: ce_dice
   paths:
