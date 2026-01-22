@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp61
+  experiment_name: exp66_partial_corr
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -20,8 +20,8 @@ train:
     - 512
   parameters:
     learning_rate: 0.0009
-    num_epochs: 120
-    save_interval: 10
+    num_epochs: 20
+    save_interval: 5
     loss_function: ce_dice
   paths:
     train_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTr
@@ -38,9 +38,9 @@ evaluation:
     save_root: results
 pruning:
   method: l1_norm
-  threshold: 0.6
+  threshold: 0.4
   num_slices: 20
-  reinitialize_weights: random
+  reinitialize_weights: null
   ckpt_path:
     subfolder: baseline
     ckpt_name: final_model.pth
@@ -53,11 +53,11 @@ pruning:
       encoders.0: 0.0
       encoders.1: 0.0
       encoders.2: 0.0
-      encoders.3: 0.99
-      encoders.4: 0.99
-      bottleneck: 0.99
-      decoders.1: 0.99
-      decoders.3: 0.99
+      encoders.3: 0.0
+      encoders.4: 0.0
+      bottleneck: 0.0
+      decoders.1: 0.0
+      decoders.3: 0.0
       decoders.5: 0.0
       decoders.7: 0.0
       decoders.9: 0.0

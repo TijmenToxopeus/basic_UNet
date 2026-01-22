@@ -57,6 +57,21 @@ def save_training_curves(metrics_log: Dict[str, list], save_dir: str, phase: str
     return plot_path
 
 
+def save_metrics_per_epoch_json(
+    metrics_log: Dict[str, list],
+    save_dir: str,
+    filename: str = "metrics_per_epoch.json",
+) -> str:
+    """
+    Save per-epoch training/validation metrics to JSON.
+
+    This file is intended for post-hoc analysis of training dynamics
+    (e.g. retraining after pruning, checkpoint vs reinitialization).
+    """
+    path = os.path.join(save_dir, filename)
+    return save_json(metrics_log, path)
+
+
 def save_json(obj: Dict[str, Any], path: str) -> str:
     with open(path, "w") as f:
         json.dump(obj, f, indent=4)

@@ -1,27 +1,37 @@
-import wandb
 import os
-#from paths import _get_suffix_from_ratios
+import wandb
 
 def setup_wandb(cfg, job_type="training"):
     """
     Initialize a W&B run for each pipeline stage.
-    All runs from the same experiment are grouped together.
+    Can be fully disabled via config or environment variable.
     """
-    exp_cfg = cfg.get("experiment", {})
-    exp_name = exp_cfg.get("experiment_name", "unnamed_exp")
-    model_name = exp_cfg.get("model_name", "UNet")
-    entity = exp_cfg.get("wandb_entity", "tijmen-toxo-tu-delft")
-    #suffix = _get_suffix_from_ratios(cfg)
 
-    # run_name = f"{exp_name}_{job_type}"
-    run_name = f"{exp_name}"
+    # -------------------------------
+    # Global / config-based disable
+    # -------------------------------
+    exp_cfg = cfg.get("experiment", {})
+    use_wandb = exp_cfg.get("use_wandb", False)  # <-- default OFF
+
+    if not use_wandb:
+        os.environ["WANDB_DISABLED"] = "true"
+        return None  # 🔴 IMPORTANT: no wandb run object
+
+    # -------------------------------
+    # Normal W&B setup
+    # -------------------------------
     os.environ["WANDB_SILENT"] = "true"
+    os.environ["WANDB_MODE"] = "online"  # never prompt
+
+    exp_name   = exp_cfg.get("experiment_name", "unnamed_exp")
+    model_name = exp_cfg.get("model_name", "UNet")
+    entity     = exp_cfg.get("wandb_entity", "tijmen-toxo-tu-delft")
 
     run = wandb.init(
         project="unet-pruning",
         entity=entity,
-        group=exp_name,                    # ✅ this makes them fall under one experiment
-        name=run_name,                     # unique run name
+        group=exp_name,
+        name=f"{exp_name}_{job_type}",
         job_type=job_type,
         config=cfg,
         dir=os.path.join("results", model_name, exp_name),
@@ -31,8 +41,4 @@ def setup_wandb(cfg, job_type="training"):
         tags=[model_name, job_type],
     )
 
-    # print(f"🧭 W&B initialized for '{job_type}' under experiment '{exp_name}' ({entity})")
-    # print(f"📂 Logs stored in: {wandb.run.dir}")
-
     return run
-
