@@ -22,6 +22,7 @@ env/
 *.egg-info/
 
 # --- Results, models, and checkpoints ---
+manim_visuals/
 media/
 results/
 checkpoints/
