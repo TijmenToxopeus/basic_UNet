@@ -59,7 +59,6 @@ class UNet(nn.Module):
         # ---------- Decoder ----------
         if dec_features is None:
             dec_features = list(reversed(enc_features))
-
         self.decoders = nn.ModuleList()
         prev_ch = bottleneck_out
 
@@ -125,4 +124,6 @@ class UNet(nn.Module):
             # DoubleConv
             x = self.decoders[idx + 1](x)
 
-        return torch.sigmoid(self.final_conv(x))
+        #return torch.sigmoid(self.final_conv(x))
+        return self.final_conv(x)
+

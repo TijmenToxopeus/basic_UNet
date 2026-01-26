@@ -143,6 +143,7 @@ def run_pruning(cfg=None):
     threshold = prune_out.extra.get("threshold", pruning_cfg.get("threshold", None))
 
     meta_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_meta.json")
+    resize_log_path = paths.pruned_model.with_name(paths.pruned_model.stem + "_resize_log.json")
 
     summary["prune"] = {
         "method": prune_out.method,  # should match l1_norm / similar_feature
@@ -166,6 +167,7 @@ def run_pruning(cfg=None):
         "artifacts": {
             "pruned_model": str(paths.pruned_model),
             "meta_json": str(meta_path),
+            "resize_log": str(resize_log_path) if resize_log_path.exists() else None,
         },
     }
 
@@ -190,4 +192,3 @@ def run_pruning(cfg=None):
 
 if __name__ == "__main__":
     run_pruning()
-

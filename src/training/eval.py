@@ -48,6 +48,23 @@ def save_visual(img, mask, pred, save_dir, idx):
 # ------------------------------------------------------------
 # EVALUATION PIPELINE
 # ------------------------------------------------------------
+@torch.no_grad()
+def recalibrate_bn(model, loader, device, *, num_batches: int = 5) -> int:
+    """
+    Recompute BatchNorm running stats on a few batches.
+    """
+    model.train()
+    seen = 0
+    for imgs, _masks in loader:
+        imgs = imgs.to(device)
+        _ = model(imgs)
+        seen += 1
+        if seen >= num_batches:
+            break
+    model.eval()
+    return seen
+
+
 def evaluate(cfg=None, debug=False):
 
     # ============================================================
@@ -175,6 +192,17 @@ def evaluate(cfg=None, debug=False):
 
     print(f"✅ Loaded {n_batches} evaluation batches.")
 
+    # ------------------------------------------------------------
+    # Optional BN recalibration for pruned models
+    # ------------------------------------------------------------
+    bn_cfg = eval_cfg.get("bn_recalibration", {})
+    bn_enabled = bool(bn_cfg.get("enabled", phase != "baseline_evaluation"))
+    bn_batches = int(bn_cfg.get("num_batches", 5))
+
+    if bn_enabled and bn_batches > 0:
+        print(f"🧪 BN recalibration: {bn_batches} batches")
+        used = recalibrate_bn(model, test_loader, device, num_batches=bn_batches)
+        print(f"🧪 BN recalibration done (used {used} batches)")
 
     # Seeded selection of visualization indices (batch indices)
     rng = random.Random(seed)

@@ -669,7 +669,14 @@ def resize_tensor(t, target_shape):
     return out
 
 
-def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verbose=False):
+def copy_all_weights_with_pruning(
+    original,
+    pruned,
+    masks,
+    prunable_layers,
+    verbose: bool = False,
+    resize_log: list | None = None,
+):
     """
     Copies weights from the original UNet to the newly pruned UNet.
 
@@ -704,6 +711,13 @@ def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verb
             if sliced.shape != pruned_tensor.shape:
                 if verbose:
                     print(f"⚠️ Shape mismatch in {key}, adjusting…")
+                if resize_log is not None:
+                    resize_log.append({
+                        "key": key,
+                        "from": list(sliced.shape),
+                        "to": list(pruned_tensor.shape),
+                        "reason": "pruned_layer_resize",
+                    })
                 sliced = resize_tensor(sliced, pruned_tensor.shape)
 
             new_state[key] = sliced.clone()
@@ -715,6 +729,13 @@ def copy_all_weights_with_pruning(original, pruned, masks, prunable_layers, verb
             if tensor.shape != pruned_tensor.shape:
                 if verbose:
                     print(f"🔧 Correcting shape for {key}: {tensor.shape} → {pruned_tensor.shape}")
+                if resize_log is not None:
+                    resize_log.append({
+                        "key": key,
+                        "from": list(tensor.shape),
+                        "to": list(pruned_tensor.shape),
+                        "reason": "non_pruned_layer_resize",
+                    })
                 tensor = resize_tensor(tensor, pruned_tensor.shape)
 
             new_state[key] = tensor
@@ -805,12 +826,14 @@ def rebuild_pruned_unet(model, masks, save_path=None, seed=None, deterministic=F
         bottleneck_out=bottleneck_out
     )
 
+    resize_log = []
     pruned_model = copy_all_weights_with_pruning(
         model,
         pruned_model,
         masks,
         prunable_layers,
-        verbose=False
+        verbose=False,
+        resize_log=resize_log,
     )
 
     plot_unet_schematic(
@@ -835,6 +858,12 @@ def rebuild_pruned_unet(model, masks, save_path=None, seed=None, deterministic=F
         meta_path = save_path.with_name(save_path.stem + "_meta.json")
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=4)
+
+        if resize_log:
+            resize_log_path = save_path.with_name(save_path.stem + "_resize_log.json")
+            with open(resize_log_path, "w") as f:
+                json.dump(resize_log, f, indent=2)
+            print(f"🧾 Saved resize log: {resize_log_path}")
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model

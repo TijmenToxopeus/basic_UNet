@@ -25,29 +25,28 @@ def get_loss_function(name):
 # Dice Loss (vectorized, efficient)
 # ------------------------------------------------------------
 class DiceLoss(nn.Module):
-    def __init__(self, smooth=1e-6):
+    def __init__(self, smooth=1e-6, include_background=False):
         super().__init__()
         self.smooth = smooth
+        self.include_background = include_background
 
-    def forward(self, preds, targets):
-        # preds: (B, C, H, W)
-        # targets: (B, H, W)
-        preds = F.softmax(preds, dim=1)
-        num_classes = preds.shape[1]
-
-        # One-hot encode the target for multi-class dice
+    def forward(self, logits, targets):
+        probs = F.softmax(logits, dim=1)
+        num_classes = probs.shape[1]
         target_onehot = F.one_hot(targets, num_classes).permute(0, 3, 1, 2).float()
 
-        # Dice computation
+        if not self.include_background:
+            probs = probs[:, 1:]
+            target_onehot = target_onehot[:, 1:]
+
         dims = (0, 2, 3)
-        intersection = torch.sum(preds * target_onehot, dims)
-        pred_sum = torch.sum(preds, dims)
+        intersection = torch.sum(probs * target_onehot, dims)
+        pred_sum = torch.sum(probs, dims)
         target_sum = torch.sum(target_onehot, dims)
 
         dice = (2 * intersection + self.smooth) / (pred_sum + target_sum + self.smooth)
-        loss = 1 - dice.mean()  # mean over classes
+        return 1 - dice.mean()
 
-        return loss
 
 
 # ------------------------------------------------------------
@@ -74,7 +73,7 @@ class FocalLoss(nn.Module):
 # CE + Dice (balanced)
 # ------------------------------------------------------------
 class CombinedCELossDice(nn.Module):
-    def __init__(self, ce_weight=0.5, dice_weight=0.5):
+    def __init__(self, ce_weight=0.7, dice_weight=0.3):
         super().__init__()
         self.ce = nn.CrossEntropyLoss()
         self.dice = DiceLoss()
