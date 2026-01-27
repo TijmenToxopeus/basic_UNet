@@ -554,6 +554,208 @@ def get_pruned_feature_sizes(model, masks):
     return enc_features, bottleneck_out, dec_features
 
 
+def _mask_or_all(mask: torch.Tensor | None, out_ch: int) -> torch.Tensor:
+    if mask is None:
+        return torch.ones(out_ch, dtype=torch.bool)
+    if mask.numel() != out_ch:
+        raise ValueError(f"Mask length {mask.numel()} != out_ch {out_ch}")
+    return mask.bool()
+
+
+def _collect_unet_masks(model: UNet, masks: dict) -> tuple[list[torch.Tensor], torch.Tensor, list[torch.Tensor]]:
+    enc_masks: list[torch.Tensor] = []
+    for i in range(len(model.encoders)):
+        out_ch = model.encoders[i].net[3].out_channels
+        m = masks.get(f"encoders.{i}.net.3", None)
+        if m is None:
+            m = masks.get(f"encoders.{i}.net.0", None)
+        enc_masks.append(_mask_or_all(m, out_ch))
+
+    bottleneck_out = model.bottleneck.net[3].out_channels
+    m = masks.get("bottleneck.net.3", None)
+    if m is None:
+        m = masks.get("bottleneck.net.0", None)
+    bottleneck_mask = _mask_or_all(m, bottleneck_out)
+
+    dec_masks: list[torch.Tensor] = []
+    for j in range(0, len(model.decoders), 2):
+        out_ch = model.decoders[j + 1].net[3].out_channels
+        name = f"decoders.{j+1}.net.3"
+        m = masks.get(name, None)
+        if m is None:
+            m = masks.get(f"decoders.{j+1}.net.0", None)
+        dec_masks.append(_mask_or_all(m, out_ch))
+
+    if any(int(m.sum()) == 0 for m in enc_masks):
+        raise ValueError("One or more encoder blocks pruned to zero channels.")
+    if int(bottleneck_mask.sum()) == 0:
+        raise ValueError("Bottleneck pruned to zero channels.")
+    if any(int(m.sum()) == 0 for m in dec_masks):
+        raise ValueError("One or more decoder blocks pruned to zero channels.")
+
+    return enc_masks, bottleneck_mask, dec_masks
+
+
+def _idx(mask: torch.Tensor, device: torch.device) -> torch.Tensor:
+    return torch.where(mask.to(device))[0]
+
+
+@torch.no_grad()
+def copy_unet_weights_strict(
+    original: UNet,
+    pruned: UNet,
+    enc_masks: list[torch.Tensor],
+    bottleneck_mask: torch.Tensor,
+    dec_masks: list[torch.Tensor],
+) -> None:
+    """
+    Strict UNet weight copy using mask-consistent channel slicing.
+    Raises if any shape mismatch occurs.
+    """
+    dev = next(pruned.parameters()).device
+
+    # ---------- Encoder ----------
+    for i in range(len(original.encoders)):
+        enc_src = original.encoders[i]
+        enc_dst = pruned.encoders[i]
+
+        m_out = enc_masks[i]
+        m_in = enc_masks[i - 1] if i > 0 else torch.ones(enc_src.net[0].in_channels, dtype=torch.bool)
+
+        out_idx = _idx(m_out, dev)
+        in_idx = _idx(m_in, dev)
+
+        # conv0
+        w0 = enc_src.net[0].weight.data[out_idx][:, in_idx, :, :]
+        if w0.shape != enc_dst.net[0].weight.shape:
+            raise ValueError(f"Encoder {i} conv0 shape mismatch: {w0.shape} vs {enc_dst.net[0].weight.shape}")
+        enc_dst.net[0].weight.data.copy_(w0)
+
+        # bn0
+        for attr in ("weight", "bias", "running_mean", "running_var"):
+            t = getattr(enc_src.net[1], attr)
+            d = getattr(enc_dst.net[1], attr)
+            v = t.data[out_idx]
+            if v.shape != d.shape:
+                raise ValueError(f"Encoder {i} bn0 {attr} mismatch: {v.shape} vs {d.shape}")
+            d.data.copy_(v)
+
+        # conv1
+        w1 = enc_src.net[3].weight.data[out_idx][:, out_idx, :, :]
+        if w1.shape != enc_dst.net[3].weight.shape:
+            raise ValueError(f"Encoder {i} conv1 shape mismatch: {w1.shape} vs {enc_dst.net[3].weight.shape}")
+        enc_dst.net[3].weight.data.copy_(w1)
+
+        # bn1
+        for attr in ("weight", "bias", "running_mean", "running_var"):
+            t = getattr(enc_src.net[4], attr)
+            d = getattr(enc_dst.net[4], attr)
+            v = t.data[out_idx]
+            if v.shape != d.shape:
+                raise ValueError(f"Encoder {i} bn1 {attr} mismatch: {v.shape} vs {d.shape}")
+            d.data.copy_(v)
+
+    # ---------- Bottleneck ----------
+    m_out = bottleneck_mask
+    m_in = enc_masks[-1]
+    out_idx = _idx(m_out, dev)
+    in_idx = _idx(m_in, dev)
+
+    w0 = original.bottleneck.net[0].weight.data[out_idx][:, in_idx, :, :]
+    if w0.shape != pruned.bottleneck.net[0].weight.shape:
+        raise ValueError(f"Bottleneck conv0 mismatch: {w0.shape} vs {pruned.bottleneck.net[0].weight.shape}")
+    pruned.bottleneck.net[0].weight.data.copy_(w0)
+
+    for attr in ("weight", "bias", "running_mean", "running_var"):
+        t = getattr(original.bottleneck.net[1], attr)
+        d = getattr(pruned.bottleneck.net[1], attr)
+        v = t.data[out_idx]
+        if v.shape != d.shape:
+            raise ValueError(f"Bottleneck bn0 {attr} mismatch: {v.shape} vs {d.shape}")
+        d.data.copy_(v)
+
+    w1 = original.bottleneck.net[3].weight.data[out_idx][:, out_idx, :, :]
+    if w1.shape != pruned.bottleneck.net[3].weight.shape:
+        raise ValueError(f"Bottleneck conv1 mismatch: {w1.shape} vs {pruned.bottleneck.net[3].weight.shape}")
+    pruned.bottleneck.net[3].weight.data.copy_(w1)
+
+    for attr in ("weight", "bias", "running_mean", "running_var"):
+        t = getattr(original.bottleneck.net[4], attr)
+        d = getattr(pruned.bottleneck.net[4], attr)
+        v = t.data[out_idx]
+        if v.shape != d.shape:
+            raise ValueError(f"Bottleneck bn1 {attr} mismatch: {v.shape} vs {d.shape}")
+        d.data.copy_(v)
+
+    # ---------- Decoder ----------
+    num_blocks = len(dec_masks)
+    for j in range(num_blocks):
+        up_src = original.decoders[2 * j]
+        up_dst = pruned.decoders[2 * j]
+        dec_src = original.decoders[2 * j + 1]
+        dec_dst = pruned.decoders[2 * j + 1]
+
+        up_in_mask = bottleneck_mask if j == 0 else dec_masks[j - 1]
+        up_out_mask = dec_masks[j]
+        up_in_idx = _idx(up_in_mask, dev)
+        up_out_idx = _idx(up_out_mask, dev)
+
+        # ConvTranspose2d weight: [in, out, k, k]
+        w_up = up_src.weight.data[up_in_idx][:, up_out_idx, :, :]
+        if w_up.shape != up_dst.weight.shape:
+            raise ValueError(f"Decoder {j} upconv mismatch: {w_up.shape} vs {up_dst.weight.shape}")
+        up_dst.weight.data.copy_(w_up)
+        if up_src.bias is not None and up_dst.bias is not None:
+            b = up_src.bias.data[up_out_idx]
+            if b.shape != up_dst.bias.shape:
+                raise ValueError(f"Decoder {j} upconv bias mismatch: {b.shape} vs {up_dst.bias.shape}")
+            up_dst.bias.data.copy_(b)
+
+        # DoubleConv input is concat(skip, up)
+        skip_mask = enc_masks[-(j + 1)]
+        skip_idx = _idx(skip_mask, dev)
+        up_idx = up_out_idx
+
+        orig_skip_ch = original.encoders[-(j + 1)].net[3].out_channels
+        input_idx = torch.cat([skip_idx, orig_skip_ch + up_idx], dim=0)
+
+        out_idx = up_out_idx
+        w0 = dec_src.net[0].weight.data[out_idx][:, input_idx, :, :]
+        if w0.shape != dec_dst.net[0].weight.shape:
+            raise ValueError(f"Decoder {j} conv0 mismatch: {w0.shape} vs {dec_dst.net[0].weight.shape}")
+        dec_dst.net[0].weight.data.copy_(w0)
+
+        for attr in ("weight", "bias", "running_mean", "running_var"):
+            t = getattr(dec_src.net[1], attr)
+            d = getattr(dec_dst.net[1], attr)
+            v = t.data[out_idx]
+            if v.shape != d.shape:
+                raise ValueError(f"Decoder {j} bn0 {attr} mismatch: {v.shape} vs {d.shape}")
+            d.data.copy_(v)
+
+        w1 = dec_src.net[3].weight.data[out_idx][:, out_idx, :, :]
+        if w1.shape != dec_dst.net[3].weight.shape:
+            raise ValueError(f"Decoder {j} conv1 mismatch: {w1.shape} vs {dec_dst.net[3].weight.shape}")
+        dec_dst.net[3].weight.data.copy_(w1)
+
+        for attr in ("weight", "bias", "running_mean", "running_var"):
+            t = getattr(dec_src.net[4], attr)
+            d = getattr(dec_dst.net[4], attr)
+            v = t.data[out_idx]
+            if v.shape != d.shape:
+                raise ValueError(f"Decoder {j} bn1 {attr} mismatch: {v.shape} vs {d.shape}")
+            d.data.copy_(v)
+
+    # ---------- Final conv ----------
+    final_in_mask = dec_masks[-1]
+    in_idx = _idx(final_in_mask, dev)
+    w_final = original.final_conv.weight.data[:, in_idx, :, :]
+    if w_final.shape != pruned.final_conv.weight.shape:
+        raise ValueError(f"Final conv mismatch: {w_final.shape} vs {pruned.final_conv.weight.shape}")
+    pruned.final_conv.weight.data.copy_(w_final)
+    if original.final_conv.bias is not None and pruned.final_conv.bias is not None:
+        pruned.final_conv.bias.data.copy_(original.final_conv.bias.data)
+
 def build_pruned_unet(model, enc_features, dec_features=None, bottleneck_out=None):
     """
     Build a fresh UNet with reduced encoder and decoder features.
@@ -728,19 +930,19 @@ def copy_all_weights_with_pruning(
             tensor = orig_tensor.clone()
             if tensor.shape != pruned_tensor.shape:
                 if verbose:
-                    print(f"🔧 Correcting shape for {key}: {tensor.shape} → {pruned_tensor.shape}")
+                    print(f"⚠️ Non-pruned shape mismatch for {key}: {tensor.shape} vs {pruned_tensor.shape} — keeping init")
                 if resize_log is not None:
                     resize_log.append({
                         "key": key,
                         "from": list(tensor.shape),
                         "to": list(pruned_tensor.shape),
-                        "reason": "non_pruned_layer_resize",
+                        "reason": "non_pruned_mismatch_kept_init",
                     })
-                tensor = resize_tensor(tensor, pruned_tensor.shape)
-
-            new_state[key] = tensor
-            if verbose:
-                print(f"📥 Copied non-pruned layer → {key}: {tuple(new_state[key].shape)}")
+                new_state[key] = pruned_tensor
+            else:
+                new_state[key] = tensor
+                if verbose:
+                    print(f"📥 Copied non-pruned layer → {key}: {tuple(new_state[key].shape)}")
 
     pruned.load_state_dict(new_state, strict=False)
 
@@ -809,15 +1011,10 @@ def rebuild_pruned_unet(model, masks, save_path=None, seed=None, deterministic=F
 
     print("🔧 Rebuilding pruned UNet architecture...")
 
-    def is_prunable(mod):
-        return isinstance(mod, nn.Conv2d)
-
-    prunable_layers = {
-        name: is_prunable(module)
-        for name, module in model.named_modules()
-    }
-
-    enc_features, bottleneck_out, dec_features = get_pruned_feature_sizes(model, masks)
+    enc_masks, bottleneck_mask, dec_masks = _collect_unet_masks(model, masks)
+    enc_features = [int(m.sum().item()) for m in enc_masks]
+    bottleneck_out = int(bottleneck_mask.sum().item())
+    dec_features = [int(m.sum().item()) for m in dec_masks]
 
     pruned_model = build_pruned_unet(
         model,
@@ -826,14 +1023,12 @@ def rebuild_pruned_unet(model, masks, save_path=None, seed=None, deterministic=F
         bottleneck_out=bottleneck_out
     )
 
-    resize_log = []
-    pruned_model = copy_all_weights_with_pruning(
-        model,
-        pruned_model,
-        masks,
-        prunable_layers,
-        verbose=False,
-        resize_log=resize_log,
+    copy_unet_weights_strict(
+        original=model,
+        pruned=pruned_model,
+        enc_masks=enc_masks,
+        bottleneck_mask=bottleneck_mask,
+        dec_masks=dec_masks,
     )
 
     plot_unet_schematic(
@@ -859,11 +1054,9 @@ def rebuild_pruned_unet(model, masks, save_path=None, seed=None, deterministic=F
         with open(meta_path, "w") as f:
             json.dump(meta, f, indent=4)
 
-        if resize_log:
-            resize_log_path = save_path.with_name(save_path.stem + "_resize_log.json")
-            with open(resize_log_path, "w") as f:
-                json.dump(resize_log, f, indent=2)
-            print(f"🧾 Saved resize log: {resize_log_path}")
+        resize_log_path = save_path.with_name(save_path.stem + "_resize_log.json")
+        if resize_log_path.exists():
+            print(f"🧾 Resize log exists: {resize_log_path}")
 
     print("✅ UNet successfully rebuilt.")
     return pruned_model

@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp77_test
+  experiment_name: exp79_test
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -36,6 +36,9 @@ evaluation:
     eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
     label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
+  bn_recalibration:
+    enabled: true
+    num_batches: 5
 pruning:
   method: l1_norm
   threshold: 0.4

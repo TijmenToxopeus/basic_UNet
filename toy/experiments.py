@@ -19,7 +19,14 @@ from src.training.metrics import dice_score, iou_score
 from src.training.training_loop import train_one_epoch, validate
 from src.utils.reproducibility import seed_everything
 
-from toy.datasets import ShapesDatasetConfig, get_synthetic_loaders
+from toy.datasets import (
+    ShapesDatasetConfig,
+    MNISTConfig,
+    FashionMNISTConfig,
+    get_synthetic_loaders,
+    get_mnist_loaders,
+    get_fashion_mnist_loaders,
+)
 from toy.models import build_tiny_unet
 from toy.utils import make_run_dir, resolve_device, save_json
 
@@ -29,8 +36,53 @@ def _parse_features(s: str) -> list[int]:
     return [int(x) for x in items]
 
 
-def _num_classes(mode: str) -> int:
-    return 2 if mode == "binary" else 3
+def _parse_float_list(s: str) -> list[float]:
+    return [float(x.strip()) for x in s.split(",") if x.strip()]
+
+
+def _num_classes(mode: str, fg_classes: int | None = None) -> int:
+    return 2 if mode == "binary" else 1 + (fg_classes if fg_classes is not None else 2)
+
+
+# Foreground-only metrics (exclude background class 0)
+def fg_dice_score(preds: torch.Tensor, targets: torch.Tensor, num_classes: int) -> float:
+    # Accept logits [N,C,H,W] or label maps [N,H,W]
+    if preds.dim() == 4:
+        preds = preds.argmax(dim=1)
+    assert preds.dim() == 3 and targets.dim() == 3, "Expect [N,H,W] label maps"
+    N = preds.shape[0]
+    dice_vals = []
+    eps = 1e-6
+    for c in range(1, num_classes):
+        pred_c = (preds == c).float().view(N, -1)
+        targ_c = (targets == c).float().view(N, -1)
+        inter = (pred_c * targ_c).sum(dim=1)
+        denom = pred_c.sum(dim=1) + targ_c.sum(dim=1)
+        dice_c = (2.0 * inter + eps) / (denom + eps)
+        dice_vals.append(dice_c)
+    if not dice_vals:
+        return 1.0
+    dice_stack = torch.stack(dice_vals, dim=0).mean(dim=0)  # mean over classes, per-sample
+    return float(dice_stack.mean().item())                   # mean over batch
+
+def fg_iou_score(preds: torch.Tensor, targets: torch.Tensor, num_classes: int) -> float:
+    if preds.dim() == 4:
+        preds = preds.argmax(dim=1)
+    assert preds.dim() == 3 and targets.dim() == 3, "Expect [N,H,W] label maps"
+    N = preds.shape[0]
+    iou_vals = []
+    eps = 1e-6
+    for c in range(1, num_classes):
+        pred_c = (preds == c).float().view(N, -1)
+        targ_c = (targets == c).float().view(N, -1)
+        inter = (pred_c * targ_c).sum(dim=1)
+        union = pred_c.sum(dim=1) + targ_c.sum(dim=1) - inter
+        iou_c = (inter + eps) / (union + eps)
+        iou_vals.append(iou_c)
+    if not iou_vals:
+        return 1.0
+    iou_stack = torch.stack(iou_vals, dim=0).mean(dim=0)  # mean over classes, per-sample
+    return float(iou_stack.mean().item())                  # mean over batch
 
 
 def train_baseline(
@@ -76,8 +128,8 @@ def train_baseline(
             loader=val_loader,
             device=device,
             out_ch=out_ch,
-            dice_fn=dice_score,
-            iou_fn=iou_score,
+            dice_fn=fg_dice_score,   # foreground-only
+            iou_fn=fg_iou_score,     # foreground-only
         )
 
         epoch_metrics = {
@@ -109,8 +161,8 @@ def eval_model(*, model, loader, device, out_ch) -> dict:
         loader=loader,
         device=device,
         out_ch=out_ch,
-        dice_fn=dice_score,
-        iou_fn=iou_score,
+        dice_fn=fg_dice_score,   # foreground-only
+        iou_fn=fg_iou_score,     # foreground-only
     )
     return {
         "dice_mean": res.dice_mean,
@@ -188,8 +240,84 @@ def save_eval_examples(
     return saved
 
 
+def _plot_pruning_curves(pruning_runs, baseline_eval, baseline_params, out_dir: Path):
+    if not pruning_runs or baseline_eval is None or baseline_params is None:
+        return
+    plots_dir = out_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    ratios = [r["ratio"] for r in pruning_runs]
+    dice = [r["pruned_eval"]["dice_mean"] for r in pruning_runs]
+    size_pct = [100.0 - r["params"]["reduction_percent"] for r in pruning_runs]
+
+    # include baseline
+    ratios_with_base = [0.0] + ratios
+    dice_with_base = [baseline_eval["dice_mean"]] + dice
+    size_with_base = [100.0] + size_pct
+
+    # Pruned curves
+    plt.figure()
+    plt.plot(size_with_base, dice_with_base, marker="o")
+    plt.xlabel("Model size (%)")
+    plt.ylabel("Dice")
+    plt.title("Model size vs Dice (pruned)")
+    plt.gca().invert_xaxis()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(plots_dir / "model_size_vs_dice.png", dpi=150)
+    plt.close()
+
+    plt.figure()
+    plt.plot(ratios_with_base, dice_with_base, marker="o")
+    plt.xlabel("Prune ratio")
+    plt.ylabel("Dice")
+    plt.title("Prune ratio vs Dice (pruned)")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(plots_dir / "prune_ratio_vs_dice.png", dpi=150)
+    plt.close()
+
+    # Retrained curves (only if available)
+    retr_points = [
+        (r["ratio"], 100.0 - r["params"]["reduction_percent"], r["retrained_eval"]["dice_mean"])
+        for r in pruning_runs
+        if r.get("retrained_eval") is not None
+    ]
+    if retr_points:
+        ret_ratios = [p[0] for p in retr_points]
+        ret_sizes = [p[1] for p in retr_points]
+        ret_dice = [p[2] for p in retr_points]
+
+        # include baseline
+        ret_ratios_with_base = [0.0] + ret_ratios
+        ret_dice_with_base = [baseline_eval["dice_mean"]] + ret_dice
+        ret_sizes_with_base = [100.0] + ret_sizes
+
+        plt.figure()
+        plt.plot(ret_sizes_with_base, ret_dice_with_base, marker="o")
+        plt.xlabel("Model size (%)")
+        plt.ylabel("Dice")
+        plt.title("Model size vs Dice (retrained)")
+        plt.gca().invert_xaxis()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(plots_dir / "model_size_vs_dice_retrained.png", dpi=150)
+        plt.close()
+
+        plt.figure()
+        plt.plot(ret_ratios_with_base, ret_dice_with_base, marker="o")
+        plt.xlabel("Prune ratio")
+        plt.ylabel("Dice")
+        plt.title("Prune ratio vs Dice (retrained)")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(plots_dir / "prune_ratio_vs_dice_retrained.png", dpi=150)
+        plt.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Toy pruning sanity-check experiment")
+    parser.add_argument("--dataset-type", default="synthetic", choices=["synthetic", "mnist", "fashion_mnist"])
     parser.add_argument("--dataset", default="binary", choices=["binary", "multiclass"])
     parser.add_argument("--image-size", type=int, default=64)
     parser.add_argument("--num-samples", type=int, default=1000)
@@ -200,37 +328,68 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--loss", default="ce_dice")
     parser.add_argument("--features", default="8,16,32")
-    parser.add_argument("--prune-ratio", type=float, default=0.3)
+    parser.add_argument("--prune-ratios", default="0.3", help="Comma-separated ratios, e.g. 0.1,0.3,0.5")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default=None)
     parser.add_argument("--output-dir", default="toy/results")
     parser.add_argument("--bn-recalib", choices=["on", "off"], default="on")
+    parser.add_argument("--data-root", default="./data", help="Root dir for MNIST download")
+    parser.add_argument("--fg-classes", type=int, default=2, help="Foreground classes for synthetic multiclass")
     args = parser.parse_args()
 
     seed_everything(args.seed, deterministic=False)
     device = resolve_device(args.device)
 
-    cfg = ShapesDatasetConfig(
-        num_samples=args.num_samples,
-        image_size=args.image_size,
-        mode=args.dataset,
-        seed=args.seed,
-    )
+    # Load dataset
+    if args.dataset_type == "synthetic":
+        cfg = ShapesDatasetConfig(
+            num_samples=args.num_samples,
+            image_size=args.image_size,
+            mode=args.dataset,
+            seed=args.seed,
+            fg_classes=args.fg_classes,
+        )
+        train_loader, val_loader = get_synthetic_loaders(
+            cfg=cfg,
+            batch_size=args.batch_size,
+            val_ratio=args.val_ratio,
+            num_workers=0,
+            deterministic=False,
+        )
+        out_ch = _num_classes(args.dataset, args.fg_classes)
+        run_name = f"{args.dataset}_tinyunet"
+    elif args.dataset_type == "mnist":
+        mnist_cfg = MNISTConfig(root=args.data_root, seed=args.seed)
+        train_loader, val_loader = get_mnist_loaders(
+            cfg=mnist_cfg,
+            batch_size=args.batch_size,
+            val_ratio=args.val_ratio,
+            num_workers=0,
+            deterministic=False,
+            mask_threshold=0.1,
+        )
+        out_ch = 2  # binary: background vs digit
+        run_name = "mnist_tinyunet"
+    else:  # fashion_mnist
+        fmnist_cfg = FashionMNISTConfig(root=args.data_root, seed=args.seed)
+        train_loader, val_loader = get_fashion_mnist_loaders(
+            cfg=fmnist_cfg,
+            batch_size=args.batch_size,
+            val_ratio=args.val_ratio,
+            num_workers=0,
+            deterministic=False,
+            mask_threshold=0.1,
+        )
+        out_ch = 2
+        run_name = "fashion_mnist_tinyunet"
 
-    train_loader, val_loader = get_synthetic_loaders(
-        cfg=cfg,
-        batch_size=args.batch_size,
-        val_ratio=args.val_ratio,
-        num_workers=0,
-        deterministic=False,
-    )
-
-    out_ch = _num_classes(args.dataset)
     features = _parse_features(args.features)
+    prune_ratios = _parse_float_list(args.prune_ratios)
     model = build_tiny_unet(in_ch=1, out_ch=out_ch, features=features).to(device)
 
-    run_dir = make_run_dir(args.output_dir, f"{args.dataset}_tinyunet")
+    run_dir = make_run_dir(args.output_dir, run_name)
     print(f"📁 Run dir: {run_dir}")
+    print(f"📊 Dataset: {args.dataset_type}, output channels: {out_ch}")
 
     # -----------------------
     # Baseline training
@@ -248,6 +407,7 @@ def main() -> None:
 
     baseline_ckpt = run_dir / "baseline.pth"
     torch.save(model.state_dict(), baseline_ckpt)
+    baseline_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
     baseline_eval = eval_model(model=model, loader=val_loader, device=device, out_ch=out_ch)
     baseline_examples = save_eval_examples(
         model=model,
@@ -259,95 +419,98 @@ def main() -> None:
     )
 
     # -----------------------
-    # Pruning (L1-norm)
+    # Pruning loop (L1-norm)
     # -----------------------
-    pruning_cfg = {
-        "pruning": {
-            "method": "l1_norm",
-            "ratios": {"default": float(args.prune_ratio), "block_ratios": {}},
-        }
-    }
-
+    pruning_runs = []
     pruner = get_method("l1_norm")
-    model_cpu = model.to("cpu")
-    prune_out = pruner.compute_masks(
-        model=model_cpu,
-        cfg=pruning_cfg,
-        seed=args.seed,
-        deterministic=False,
-        device=device,
-    )
+    baseline_params = None
 
-    pruned_ckpt = run_dir / "pruned_model.pth"
-    pruned_model = rebuild_pruned_unet(
-        model_cpu,
-        prune_out.masks,
-        save_path=pruned_ckpt,
-        seed=args.seed,
-        deterministic=False,
-    ).to(device)
+    for ratio in prune_ratios:
+        ratio_slug = str(ratio).replace(".", "_")
+        pruning_cfg = {
+            "pruning": {
+                "method": "l1_norm",
+                "ratios": {"default": float(ratio), "block_ratios": {}},
+            }
+        }
 
-    bn_batches = 0
-    if args.bn_recalib == "on":
-        bn_batches = recalibrate_bn(pruned_model, val_loader, device, num_batches=5)
-        print(f"🧪 BN recalibration done (used {bn_batches} batches)")
+        model_cpu = build_tiny_unet(in_ch=1, out_ch=out_ch, features=features).to("cpu")
+        model_cpu.load_state_dict(baseline_state)
 
-    pruned_eval = eval_model(model=pruned_model, loader=val_loader, device=device, out_ch=out_ch)
-    pruned_examples = save_eval_examples(
-        model=pruned_model,
-        loader=val_loader,
-        device=device,
-        out_ch=out_ch,
-        out_dir=run_dir / "examples" / "pruned",
-        max_items=6,
-    )
-    pstats = compute_param_stats(model, pruned_model)
-
-    # -----------------------
-    # Optional retraining
-    # -----------------------
-    retrain_eval = None
-    if args.retrain_epochs > 0:
-        _ = train_baseline(
-            model=pruned_model,
-            train_loader=train_loader,
-            val_loader=val_loader,
-            device=device,
-            epochs=args.retrain_epochs,
-            lr=args.lr,
-            loss_name=args.loss,
-            out_ch=out_ch,
+        prune_out = pruner.compute_masks(
+            model=model_cpu,
+            cfg=pruning_cfg,
+            seed=args.seed,
+            deterministic=False,
+            device="cpu",  # model_cpu is on CPU, so use CPU for mask computation
         )
-        retrain_eval = eval_model(model=pruned_model, loader=val_loader, device=device, out_ch=out_ch)
-        retrain_examples = save_eval_examples(
+
+        # Debug: print which channels are actually pruned
+        print(f"\n[DEBUG] Pruned channels for ratio {ratio}:")
+        for lname, mask in prune_out.masks.items():
+            pruned_ch = [i for i, keep in enumerate(mask) if not keep]
+            if pruned_ch:
+                print(f"  {lname}: pruned {pruned_ch}")
+
+        pruned_ckpt = run_dir / f"pruned_model_r{ratio_slug}.pth"
+        pruned_model = rebuild_pruned_unet(
+            model_cpu,
+            prune_out.masks,
+            save_path=None,  # don't let rebuild save anything
+            seed=args.seed,
+            deterministic=False,
+        )
+
+        # Move to device and save FULL model (not state_dict)
+        pruned_model = pruned_model.to(device)
+        torch.save(pruned_model, pruned_ckpt)
+
+        bn_batches = 0
+        if args.bn_recalib == "on":
+            bn_batches = recalibrate_bn(pruned_model, val_loader, device, num_batches=5)
+            print(f"🧪 BN recalibration done (used {bn_batches} batches) for ratio {ratio}")
+
+        pruned_eval = eval_model(model=pruned_model, loader=val_loader, device=device, out_ch=out_ch)
+        pruned_examples = save_eval_examples(
             model=pruned_model,
             loader=val_loader,
             device=device,
             out_ch=out_ch,
-            out_dir=run_dir / "examples" / "retrained",
+            out_dir=run_dir / "examples" / f"pruned_r{ratio_slug}",
             max_items=6,
         )
-        retrained_ckpt = run_dir / "retrained_pruned.pth"
-        torch.save(pruned_model.state_dict(), retrained_ckpt)
-    else:
-        retrain_examples = None
+        pstats = compute_param_stats(model, pruned_model)
+        if baseline_params is None:
+            baseline_params = pstats.original_params
 
-    resize_log = run_dir / "pruned_model_resize_log.json"
-    summary = {
-        "dataset": {
-            "name": args.dataset,
-            "num_samples": args.num_samples,
-            "image_size": args.image_size,
-        },
-        "model": {
-            "features": features,
-            "out_ch": out_ch,
-        },
-        "train": metrics_log,
-        "baseline_eval": baseline_eval,
-        "baseline_examples": baseline_examples,
-        "prune": {
-            "ratio": float(args.prune_ratio),
+        retrain_eval = None
+        retrain_examples = None
+        retrained_ckpt = None
+        if args.retrain_epochs > 0:
+            _ = train_baseline(
+                model=pruned_model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                device=device,
+                epochs=args.retrain_epochs,
+                lr=args.lr,
+                loss_name=args.loss,
+                out_ch=out_ch,
+            )
+            retrain_eval = eval_model(model=pruned_model, loader=val_loader, device=device, out_ch=out_ch)
+            retrain_examples = save_eval_examples(
+                model=pruned_model,
+                loader=val_loader,
+                device=device,
+                out_ch=out_ch,
+                out_dir=run_dir / "examples" / f"retrained_r{ratio_slug}",
+                max_items=6,
+            )
+            retrained_ckpt = run_dir / f"retrained_pruned_r{ratio_slug}.pth"
+            torch.save(pruned_model, retrained_ckpt)  # full model, not state_dict
+
+        pruning_runs.append({
+            "ratio": float(ratio),
             "params": {
                 "original": pstats.original_params,
                 "pruned": pstats.pruned_params,
@@ -358,17 +521,39 @@ def main() -> None:
             "retrained_eval": retrain_eval,
             "retrained_examples": retrain_examples,
             "bn_recalibration_batches": bn_batches,
+            "artifacts": {
+                "pruned_ckpt": str(pruned_ckpt),
+                "retrained_ckpt": str(retrained_ckpt) if retrained_ckpt else None,
+            },
+        })
+
+    # -----------------------
+    # Summary
+    # -----------------------
+    summary = {
+        "dataset": {
+            "name": args.dataset,
+            "num_samples": args.num_samples,
+            "image_size": args.image_size,
         },
-        "artifacts": {
-            "baseline_ckpt": str(baseline_ckpt),
-            "pruned_ckpt": str(pruned_ckpt),
-            "resize_log": str(resize_log) if resize_log.exists() else None,
-        },
+        "model": {"features": features, "out_ch": out_ch},
+        "train": metrics_log,
+        "baseline_eval": baseline_eval,
+        "baseline_examples": baseline_examples,
+        "prune_runs": pruning_runs,
+        "artifacts": {"baseline_ckpt": str(baseline_ckpt)},
     }
 
     save_json(run_dir / "summary.json", summary)
+    _plot_pruning_curves(pruning_runs, baseline_eval, baseline_params, run_dir)
     print("✅ Done. Summary saved.")
 
 
 if __name__ == "__main__":
     main()
+
+
+### EXAMPLE COMMANDS
+
+# python -m toy.experiments   --dataset-type synthetic --dataset multiclass   --epochs 150   --retrain-epochs 20   --features 2,4,8   --batch-size 64  --lr 0.01   --prune-ratio 0.05,0.
+# 1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95  --fg-classes 3
