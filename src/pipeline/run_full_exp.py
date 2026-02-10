@@ -204,7 +204,7 @@
 
 
 
-# ### GLOBAL PRUNING SWEEP
+# ### GLOBAL l1 NORM PRUNING SWEEP
 
 # import subprocess
 # import yaml
@@ -304,149 +304,149 @@
 
 
 
-## PRUNING ENCODER AND DECODER PARTS SEPERATELY
+# ## PRUNING ENCODER AND DECODER PARTS SEPERATELY
 
-import subprocess
-import yaml
-import shutil
-import os
+# import subprocess
+# import yaml
+# import shutil
+# import os
 
-CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
-BACKUP_PATH = CONFIG_PATH + ".backup"
+# CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
+# BACKUP_PATH = CONFIG_PATH + ".backup"
 
-# -------------------------------
-# Block definitions
-# -------------------------------
+# # -------------------------------
+# # Block definitions
+# # -------------------------------
 
-ENCODER_BLOCKS = [
-    "encoders.0",
-    "encoders.1",
-    "encoders.2",
-    "encoders.3",
-    "encoders.4",
-]
+# ENCODER_BLOCKS = [
+#     "encoders.0",
+#     "encoders.1",
+#     "encoders.2",
+#     "encoders.3",
+#     "encoders.4",
+# ]
 
-DEEP_ENCODERS = [
-    "encoders.3",
-    "encoders.4",
-]
+# DEEP_ENCODERS = [
+#     "encoders.3",
+#     "encoders.4",
+# ]
 
-BOTTLENECK = ["bottleneck"]
+# BOTTLENECK = ["bottleneck"]
 
-DEEP_DECODERS = [
-    "decoders.1",
-    "decoders.3",
-]
+# DEEP_DECODERS = [
+#     "decoders.1",
+#     "decoders.3",
+# ]
 
-DECODER_BLOCKS = [
-    "decoders.1",
-    "decoders.3",
-    "decoders.5",
-    "decoders.7",
-    "decoders.9",
-]
+# DECODER_BLOCKS = [
+#     "decoders.1",
+#     "decoders.3",
+#     "decoders.5",
+#     "decoders.7",
+#     "decoders.9",
+# ]
 
-ALL_BLOCKS = (
-    ENCODER_BLOCKS
-    + BOTTLENECK
-    + DECODER_BLOCKS
-)
+# ALL_BLOCKS = (
+#     ENCODER_BLOCKS
+#     + BOTTLENECK
+#     + DECODER_BLOCKS
+# )
 
-# Global pruning ratios
-RATIOS = [
-    0.00, 0.05, 0.1, 0.15, 0.2,
-    0.25, 0.3, 0.35, 0.4, 0.45,
-    0.5, 0.55, 0.6, 0.65, 0.7,
-    0.75, 0.8, 0.85, 0.9, 0.95, 0.99
-]
-
-
-# -------------------------------
-# Helpers
-# -------------------------------
-
-def run(cmd):
-    print(f"\n🚀 Running: {cmd}\n")
-    result = subprocess.run(cmd, shell=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"❌ Command failed: {cmd}")
+# # Global pruning ratios
+# RATIOS = [
+#     0.00, 0.05, 0.1, 0.15, 0.2,
+#     0.25, 0.3, 0.35, 0.4, 0.45,
+#     0.5, 0.55, 0.6, 0.65, 0.7,
+#     0.75, 0.8, 0.85, 0.9, 0.95, 0.99
+# ]
 
 
-def load_config(path):
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+# # -------------------------------
+# # Helpers
+# # -------------------------------
+
+# def run(cmd):
+#     print(f"\n🚀 Running: {cmd}\n")
+#     result = subprocess.run(cmd, shell=True)
+#     if result.returncode != 0:
+#         raise RuntimeError(f"❌ Command failed: {cmd}")
 
 
-def save_config(cfg, path=CONFIG_PATH):
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, sort_keys=False)
+# def load_config(path):
+#     with open(path, "r") as f:
+#         return yaml.safe_load(f)
 
 
-def set_block_ratios(cfg, active_blocks, ratio):
-    """
-    Set selected blocks to `ratio`, all others to 0.0
-    """
-    for blk in ALL_BLOCKS:
-        cfg["pruning"]["ratios"]["block_ratios"][blk] = (
-            float(ratio) if blk in active_blocks else 0.0
-        )
+# def save_config(cfg, path=CONFIG_PATH):
+#     with open(path, "w") as f:
+#         yaml.dump(cfg, f, sort_keys=False)
 
 
-def run_sweep(name, active_blocks):
-    print("\n" + "=" * 60)
-    print(f"🔥 STARTING SWEEP: {name}")
-    print("=" * 60 + "\n")
-
-    for ratio in RATIOS:
-        print(f"\n➡️  {name} | Ratio = {ratio}")
-
-        cfg = load_config(BACKUP_PATH)
-
-        set_block_ratios(cfg, active_blocks, ratio)
-
-        # Disable weight reinitialization
-        cfg["pruning"]["reinitialize_weights"] = None
-
-        save_config(cfg)
-
-        run("python -m src.pipeline.pruned")
-
-        print(f"✅ Completed {name} @ ratio {ratio}\n")
+# def set_block_ratios(cfg, active_blocks, ratio):
+#     """
+#     Set selected blocks to `ratio`, all others to 0.0
+#     """
+#     for blk in ALL_BLOCKS:
+#         cfg["pruning"]["ratios"]["block_ratios"][blk] = (
+#             float(ratio) if blk in active_blocks else 0.0
+#         )
 
 
-# -------------------------------
-# Main
-# -------------------------------
+# def run_sweep(name, active_blocks):
+#     print("\n" + "=" * 60)
+#     print(f"🔥 STARTING SWEEP: {name}")
+#     print("=" * 60 + "\n")
 
-def main():
-    shutil.copy(CONFIG_PATH, BACKUP_PATH)
-    print("📂 Backed up original config.yaml → config.yaml.backup")
+#     for ratio in RATIOS:
+#         print(f"\n➡️  {name} | Ratio = {ratio}")
 
-    # 1️⃣ Encoder-only pruning
-    run_sweep(
-        name="ENCODER_ONLY",
-        active_blocks=ENCODER_BLOCKS,
-    )
+#         cfg = load_config(BACKUP_PATH)
 
-    # 2️⃣ Deep core pruning (deep encoders + bottleneck + deep decoders)
-    run_sweep(
-        name="DEEP_CORE",
-        active_blocks=DEEP_ENCODERS + BOTTLENECK + DEEP_DECODERS,
-    )
+#         set_block_ratios(cfg, active_blocks, ratio)
 
-    # 3️⃣ Decoder-only pruning
-    run_sweep(
-        name="DECODER_ONLY",
-        active_blocks=DECODER_BLOCKS,
-    )
+#         # Disable weight reinitialization
+#         cfg["pruning"]["reinitialize_weights"] = None
 
-    shutil.copy(BACKUP_PATH, CONFIG_PATH)
-    print("\n🔄 Restored original config.yaml")
-    print("\n🎉 ALL PRUNING SWEEPS COMPLETED\n")
+#         save_config(cfg)
+
+#         run("python -m src.pipeline.pruned")
+
+#         print(f"✅ Completed {name} @ ratio {ratio}\n")
 
 
-if __name__ == "__main__":
-    main()
+# # -------------------------------
+# # Main
+# # -------------------------------
+
+# def main():
+#     shutil.copy(CONFIG_PATH, BACKUP_PATH)
+#     print("📂 Backed up original config.yaml → config.yaml.backup")
+
+#     # 1️⃣ Encoder-only pruning
+#     run_sweep(
+#         name="ENCODER_ONLY",
+#         active_blocks=ENCODER_BLOCKS,
+#     )
+
+#     # 2️⃣ Deep core pruning (deep encoders + bottleneck + deep decoders)
+#     run_sweep(
+#         name="DEEP_CORE",
+#         active_blocks=DEEP_ENCODERS + BOTTLENECK + DEEP_DECODERS,
+#     )
+
+#     # 3️⃣ Decoder-only pruning
+#     run_sweep(
+#         name="DECODER_ONLY",
+#         active_blocks=DECODER_BLOCKS,
+#     )
+
+#     shutil.copy(BACKUP_PATH, CONFIG_PATH)
+#     print("\n🔄 Restored original config.yaml")
+#     print("\n🎉 ALL PRUNING SWEEPS COMPLETED\n")
+
+
+# if __name__ == "__main__":
+#     main()
 
 
 # ### CORRELATION PRUNING FOR DIFFERENT TRESHOLDS USES BLOCK RATIOS DEFINED IN THE CONFIG
@@ -524,6 +524,171 @@ if __name__ == "__main__":
 
 # if __name__ == "__main__":
 #     main()
+
+
+# ## CORRELATION (SIMILAR-FEATURE) THRESHOLD SWEEP — 3 PARTS
+# Runs the same threshold sweep three times:
+# 1) ENCODER_ONLY: only encoder blocks active (others 0.0)
+# 2) DEEP_CORE: deep encoders + bottleneck + deep decoders active
+# 3) DECODER_ONLY: only decoder blocks active
+#
+# For each run:
+# - sets pruning.method = "correlation"
+# - sets pruning.threshold = <thr>
+# - disables pruning.reinitialize_weights
+# - sets cfg["pruning"]["ratios"]["block_ratios"] for the active blocks (others to 0.0)
+#
+# NOTE: This assumes your config has cfg["pruning"]["ratios"]["block_ratios"] entries
+# for all blocks listed below.
+
+import subprocess
+import yaml
+import shutil
+
+CONFIG_PATH = "/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml"
+BACKUP_PATH = CONFIG_PATH + ".backup"
+
+# -------------------------------
+# Similarity pruning sweep config
+# -------------------------------
+THRESHOLDS = [0.99, 0.98, 0.96, 0.94, 0.92, 0.88, 0.84, 0.8, 0.75, 0.7, 0.65, 0.6, 0.5, 0.4, 0.3, 0.2]
+SIM_METHOD = "correlation"
+
+# -------------------------------
+# Block definitions
+# -------------------------------
+ENCODER_BLOCKS = [
+    "encoders.0",
+    "encoders.1",
+    "encoders.2",
+    "encoders.3",
+    "encoders.4",
+]
+
+DEEP_ENCODERS = [
+    "encoders.3",
+    "encoders.4",
+]
+
+BOTTLENECK = ["bottleneck"]
+
+DEEP_DECODERS = [
+    "decoders.1",
+    "decoders.3",
+]
+
+DECODER_BLOCKS = [
+    "decoders.1",
+    "decoders.3",
+    "decoders.5",
+    "decoders.7",
+    "decoders.9",
+]
+
+ALL_BLOCKS = ENCODER_BLOCKS + BOTTLENECK + DECODER_BLOCKS
+
+
+# -------------------------------
+# Helpers
+# -------------------------------
+def run(cmd: str):
+    print(f"\n🚀 Running: {cmd}\n")
+    result = subprocess.run(cmd, shell=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"❌ Command failed: {cmd}")
+
+
+def load_config(path: str):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+def save_config(cfg, path: str = CONFIG_PATH):
+    with open(path, "w") as f:
+        yaml.dump(cfg, f, sort_keys=False)
+
+
+def set_block_ratios(cfg, active_blocks, ratio):
+    """
+    Set selected blocks to `ratio`, all others to 0.0.
+    Ensures the key exists.
+    """
+    cfg.setdefault("pruning", {})
+    cfg["pruning"].setdefault("ratios", {})
+    cfg["pruning"]["ratios"].setdefault("block_ratios", {})
+
+    for blk in ALL_BLOCKS:
+        cfg["pruning"]["ratios"]["block_ratios"][blk] = float(ratio) if blk in active_blocks else 0.0
+
+
+def run_threshold_sweep(name: str, active_blocks, ratio: float):
+    print("\n" + "=" * 60)
+    print(f"🔥 STARTING THRESHOLD SWEEP: {name} | block_ratio={ratio}")
+    print("=" * 60 + "\n")
+
+    for thr in THRESHOLDS:
+        print(f"\n➡️  {name} | threshold = {thr}")
+
+        cfg = load_config(BACKUP_PATH)
+
+        # Set similarity pruning method + threshold
+        cfg.setdefault("pruning", {})
+        cfg["pruning"]["method"] = SIM_METHOD
+        cfg["pruning"]["threshold"] = float(thr)
+
+        # Disable weight reinitialization
+        cfg["pruning"]["reinitialize_weights"] = None
+
+        # Activate only the chosen blocks at the chosen ratio
+        set_block_ratios(cfg, active_blocks, ratio)
+
+        save_config(cfg)
+
+        run("python -m src.pipeline.pruned")
+
+        print(f"✅ Completed {name} @ threshold {thr}\n")
+
+
+# -------------------------------
+# Main
+# -------------------------------
+def main():
+    shutil.copy(CONFIG_PATH, BACKUP_PATH)
+    print("📂 Backed up original config.yaml → config.yaml.backup")
+
+    # Choose the pruning ratio to apply to the active blocks during the threshold sweep.
+    # (Set this to whatever you want; e.g., 0.99 like your 'middle layers = 0.99' setup.)
+    BLOCK_RATIO = 0.99
+
+    # 1️⃣ Encoder-only
+    run_threshold_sweep(
+        name="ENCODER_ONLY",
+        active_blocks=ENCODER_BLOCKS,
+        ratio=BLOCK_RATIO,
+    )
+
+    # 2️⃣ Deep core (deep encoders + bottleneck + deep decoders)
+    run_threshold_sweep(
+        name="DEEP_CORE",
+        active_blocks=DEEP_ENCODERS + BOTTLENECK + DEEP_DECODERS,
+        ratio=BLOCK_RATIO,
+    )
+
+    # 3️⃣ Decoder-only
+    run_threshold_sweep(
+        name="DECODER_ONLY",
+        active_blocks=DECODER_BLOCKS,
+        ratio=BLOCK_RATIO,
+    )
+
+    shutil.copy(BACKUP_PATH, CONFIG_PATH)
+    print("\n🔄 Restored original config.yaml")
+    print("\n🎉 ALL THRESHOLD SWEEPS COMPLETED\n")
+
+
+if __name__ == "__main__":
+    main()
+
 
 
 
@@ -698,7 +863,7 @@ if __name__ == "__main__":
 
 #     # Run full pruned pipeline (prune -> eval -> retrain -> eval)
 #     cfg["train"]["phase"] = "retraining"
-#     cfg["train"]["parameters"]["num_epochs"] = 25
+#     cfg["train"]["parameters"]["num_epochs"] = 40
 #     cfg.setdefault("evaluation", {})
 #     cfg["evaluation"]["phase"] = "pruned_evaluation"
 
