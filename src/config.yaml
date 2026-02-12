@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp77_partial_corr_MM
+  experiment_name: exp78_compare_methods
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -20,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.009
-    num_epochs: 25
+    num_epochs: 5
     save_interval: 5
     loss_function: ce_dice
   paths:
@@ -33,15 +33,15 @@ evaluation:
   num_slices_per_volume: null
   num_visuals: 3
   paths:
-    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset300_MM/imagesTs
-    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset300_MM/labelsTs
+    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
+    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
   bn_recalibration:
     enabled: true
     num_batches: 5
 pruning:
-  method: l1_norm
-  threshold: 0.20
+  method: correlation
+  threshold: 0.85
   num_slices: 200
   reinitialize_weights: null
   ckpt_path:
@@ -53,14 +53,14 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.999
-      encoders.1: 0.999
-      encoders.2: 0.999
-      encoders.3: 0.999
-      encoders.4: 0.999
-      bottleneck: 0.0
-      decoders.1: 0.0
-      decoders.3: 0.0
-      decoders.5: 0.0
-      decoders.7: 0.0
-      decoders.9: 0.0
+      encoders.0: 0.25
+      encoders.1: 0.25
+      encoders.2: 0.25
+      encoders.3: 0.25
+      encoders.4: 0.25
+      bottleneck: 0.25
+      decoders.1: 0.25
+      decoders.3: 0.25
+      decoders.5: 0.25
+      decoders.7: 0.25
+      decoders.9: 0.25
