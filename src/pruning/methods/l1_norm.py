@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+from pathlib import Path
+import json
 
 import torch
 
@@ -41,6 +43,21 @@ class L1NormPruning(BasePruningMethod):
             seed=seed,
             deterministic=deterministic,
         )
+
+        save_dir = pruning_cfg.get("save_masks_dir")
+        if save_dir:
+            save_path = Path(save_dir)
+            save_path.mkdir(parents=True, exist_ok=True)
+            torch.save(masks, save_path / "l1_masks.pt")
+            meta = {
+                "default_ratio": default_ratio,
+                "block_ratios": block_ratios,
+                "layers": {
+                    name: {"kept": int(mask.sum().item()), "total": int(mask.numel())}
+                    for name, mask in masks.items()
+                },
+            }
+            (save_path / "l1_masks_meta.json").write_text(json.dumps(meta, indent=2))
 
         return PruneOutput(
             masks=masks,

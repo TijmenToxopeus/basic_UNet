@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+from pathlib import Path
 
 import torch
 
@@ -32,13 +33,17 @@ class SimilarFeaturePruning(BasePruningMethod):
         threshold = float(pruning_cfg.get("threshold", 0.90))
         batch_size = int(pruning_cfg.get("batch_size", 4))
 
+        # prefer config, otherwise fallback to your requested folder
+        save_dir = pruning_cfg.get("save_masks_dir") or cfg.get("paths", {}).get("pruned_model_dir")
+        if save_dir is None:
+            save_dir = "/mnt/hdd/ttoxopeus/basic_UNet/results/UNet_ACDC/exp71_partial_corr_acdc/pruned/corr_t20_0_0_0_0_0_0_99_99_99_99_99"
+
         example_slices = load_random_slices_acdc(
             img_dir,
             num_slices=num_samples,
             seed=seed,
         )
 
-        save_dir = pruning_cfg.get("save_masks_dir")
         masks = get_redundancy_masks(
             model=model,
             example_slices=example_slices,

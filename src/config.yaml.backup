@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp71_partial_corr_acdc
+  experiment_name: exp73_partial_corr_acdc
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -41,8 +41,8 @@ evaluation:
     num_batches: 5
 pruning:
   method: correlation
-  threshold: 0.4
-  num_slices: 20
+  threshold: 0.99
+  num_slices: 200
   reinitialize_weights: null
   ckpt_path:
     subfolder: baseline
@@ -53,14 +53,14 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.999
-      encoders.1: 0.999
-      encoders.2: 0.999
-      encoders.3: 0.999
-      encoders.4: 0.999
-      bottleneck: 0.999
-      decoders.1: 0.999
-      decoders.3: 0.999
-      decoders.5: 0.999
-      decoders.7: 0.999
-      decoders.9: 0.999
+      encoders.0: 0.99
+      encoders.1: 0.99
+      encoders.2: 0.99
+      encoders.3: 0.99
+      encoders.4: 0.99
+      bottleneck: 0.0
+      decoders.1: 0.0
+      decoders.3: 0.0
+      decoders.5: 0.0
+      decoders.7: 0.0
+      decoders.9: 0.0

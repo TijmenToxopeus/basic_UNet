@@ -71,6 +71,9 @@ def run_pruning(cfg=None):
     pruner = get_method(method_name)
     print(f"✂️ Using pruning method: {method_name}")
 
+    # Ensure masks are saved alongside pruning outputs (same base as summary_path)
+    pruning_cfg["save_masks_dir"] = str(paths.pruned_model_dir)
+
     # Compute masks (method is responsible for any method-specific data loading)
     prune_out = pruner.compute_masks(
         model=baseline_model,

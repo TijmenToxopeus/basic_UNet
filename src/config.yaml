@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp71_partial_corr_acdc
+  experiment_name: exp77_partial_corr_MM
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -33,16 +33,16 @@ evaluation:
   num_slices_per_volume: null
   num_visuals: 3
   paths:
-    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
-    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
+    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset300_MM/imagesTs
+    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset300_MM/labelsTs
     save_root: results
   bn_recalibration:
     enabled: true
     num_batches: 5
 pruning:
-  method: correlation
-  threshold: 0.4
-  num_slices: 20
+  method: l1_norm
+  threshold: 0.20
+  num_slices: 200
   reinitialize_weights: null
   ckpt_path:
     subfolder: baseline
@@ -58,9 +58,9 @@ pruning:
       encoders.2: 0.999
       encoders.3: 0.999
       encoders.4: 0.999
-      bottleneck: 0.999
-      decoders.1: 0.999
-      decoders.3: 0.999
-      decoders.5: 0.999
-      decoders.7: 0.999
-      decoders.9: 0.999
+      bottleneck: 0.0
+      decoders.1: 0.0
+      decoders.3: 0.0
+      decoders.5: 0.0
+      decoders.7: 0.0
+      decoders.9: 0.0
