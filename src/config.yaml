@@ -40,7 +40,7 @@ evaluation:
     enabled: true
     num_batches: 5
 pruning:
-  method: correlation
+  method: l1_norm
   threshold: 0.85
   num_slices: 200
   reinitialize_weights: null
