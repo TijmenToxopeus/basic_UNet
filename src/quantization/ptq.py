@@ -11,7 +11,7 @@
 # import torch.nn as nn
 # import torch.nn.functional as F
 # from torch.ao.quantization import QConfigMapping, get_default_qconfig
-# from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx
+# from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx, fuse_fx
 
 # from src.models.unet import UNet
 # from src.pruning.rebuild import load_full_pruned_model
@@ -61,6 +61,7 @@
 #     *,
 #     keep_convtranspose_fp32: bool,
 #     keep_final_conv_fp32: bool,
+#     keep_batchnorm_fp32: bool,
 # ) -> QConfigMapping:
 #     qconfig = get_default_qconfig(backend)
 #     mapping = QConfigMapping().set_global(qconfig)
@@ -70,6 +71,9 @@
 #     if keep_final_conv_fp32:
 #         # UNet stores this as `final_conv`.
 #         mapping = mapping.set_module_name("final_conv", None)
+#     if keep_batchnorm_fp32:
+#         mapping = mapping.set_object_type(nn.BatchNorm2d, None)
+
 #     return mapping
 
 
@@ -106,7 +110,6 @@
 
 
 # def _load_target_model(cfg: dict, model_phase: str) -> tuple[nn.Module, Path]:
-#     exp_cfg = cfg["experiment"]
 #     train_cfg = cfg["train"]
 #     in_ch = int(train_cfg["model"]["in_channels"])
 #     out_ch = int(train_cfg["model"]["out_channels"])
@@ -192,8 +195,6 @@
 
 #         return self.final_conv(x)
 
-#     # FX uses class-level forward lookup during tracing, so override at class level
-#     # for this instance by swapping to a temporary subclass.
 #     traceable_cls = type(
 #         f"{model.__class__.__name__}FXTraceable",
 #         (model.__class__,),
@@ -214,6 +215,8 @@
 #     eval_batch_size: int,
 #     keep_convtranspose_fp32: bool,
 #     keep_final_conv_fp32: bool,
+#     keep_batchnorm_fp32: bool,
+#     fuse_conv_bn: bool,
 #     num_threads: int | None,
 #     bench_warmup: int,
 #     bench_runs: int,
@@ -271,9 +274,14 @@
 #         backend,
 #         keep_convtranspose_fp32=keep_convtranspose_fp32,
 #         keep_final_conv_fp32=keep_final_conv_fp32,
+#         keep_batchnorm_fp32=keep_batchnorm_fp32,
 #     )
 
 #     model_for_quant = _make_unet_fx_traceable(copy.deepcopy(model_fp32)).eval()
+#     if fuse_conv_bn:
+#         # Fuses patterns like Conv-BN-(ReLU) into single modules for better PTQ stability.
+#         model_for_quant = fuse_fx(model_for_quant)
+
 #     prepared = prepare_fx(model_for_quant, qconfig_mapping, example_inputs)
 #     used_calib_batches = _run_calibration(prepared, calib_loader, device, num_batches=calib_batches)
 #     model_int8 = convert_fx(prepared).eval()
@@ -343,6 +351,8 @@
 #         "qconfig": {
 #             "keep_convtranspose_fp32": bool(keep_convtranspose_fp32),
 #             "keep_final_conv_fp32": bool(keep_final_conv_fp32),
+#             "keep_batchnorm_fp32": bool(keep_batchnorm_fp32),
+#             "fuse_conv_bn": bool(fuse_conv_bn),
 #         },
 #         "cpu_benchmark": {
 #             "threads": int(num_threads) if num_threads is not None else None,
@@ -423,10 +433,39 @@
 #         action="store_true",
 #         help="Keep final logits conv in float for better boundary stability.",
 #     )
+#     parser.add_argument(
+#         "--keep-bn-fp32",
+#         dest="keep_batchnorm_fp32",
+#         action="store_true",
+#         help="Keep BatchNorm2d layers in float (useful if fusion fails or Dice drops).",
+#     )
+#     parser.add_argument(
+#         "--quantize-bn",
+#         dest="keep_batchnorm_fp32",
+#         action="store_false",
+#         help="Allow BatchNorm2d quantization / fusion.",
+#     )
+#     parser.add_argument(
+#         "--fuse-conv-bn",
+#         dest="fuse_conv_bn",
+#         action="store_true",
+#         help="Run FX fusion (Conv-BN-(ReLU)) before PTQ (recommended).",
+#     )
+#     parser.add_argument(
+#         "--no-fuse-conv-bn",
+#         dest="fuse_conv_bn",
+#         action="store_false",
+#         help="Disable FX fusion before PTQ.",
+#     )
 #     parser.add_argument("--num-threads", type=int, default=1)
 #     parser.add_argument("--bench-warmup", type=int, default=20)
 #     parser.add_argument("--bench-runs", type=int, default=100)
+
+#     # Defaults: keep deconv float; fuse conv-bn; allow BN fusion by default (i.e., do NOT force BN float)
 #     parser.set_defaults(keep_convtranspose_fp32=True)
+#     parser.set_defaults(keep_batchnorm_fp32=False)
+#     parser.set_defaults(fuse_conv_bn=True)
+
 #     return parser.parse_args()
 
 
@@ -447,6 +486,8 @@
 #         eval_batch_size=args.eval_batch_size,
 #         keep_convtranspose_fp32=args.keep_convtranspose_fp32,
 #         keep_final_conv_fp32=args.keep_final_conv_fp32,
+#         keep_batchnorm_fp32=args.keep_batchnorm_fp32,
+#         fuse_conv_bn=args.fuse_conv_bn,
 #         num_threads=args.num_threads,
 #         bench_warmup=args.bench_warmup,
 #         bench_runs=args.bench_runs,
@@ -524,17 +565,32 @@ def _build_qconfig_mapping(
     keep_convtranspose_fp32: bool,
     keep_final_conv_fp32: bool,
     keep_batchnorm_fp32: bool,
+    keep_concat_fp32: bool,
 ) -> QConfigMapping:
+    """
+    Build FX QConfigMapping.
+
+    keep_concat_fp32=True forces torch.cat (skip-connection concatenations) to run in FP32.
+    FX will insert dequant/quant boundaries around the cat, preventing the quantized-cat
+    requirement that both inputs share identical quantization parameters.
+    """
     qconfig = get_default_qconfig(backend)
     mapping = QConfigMapping().set_global(qconfig)
 
     if keep_convtranspose_fp32:
         mapping = mapping.set_object_type(nn.ConvTranspose2d, None)
+
     if keep_final_conv_fp32:
         # UNet stores this as `final_conv`.
         mapping = mapping.set_module_name("final_conv", None)
+
     if keep_batchnorm_fp32:
         mapping = mapping.set_object_type(nn.BatchNorm2d, None)
+
+    if keep_concat_fp32:
+        # torch.cat is used in U-Net skip connections; running it in int8 can cause
+        # large numerical issues when the two branches have different qparams.
+        mapping = mapping.set_object_type(torch.cat, None)
 
     return mapping
 
@@ -652,7 +708,7 @@ def _make_unet_fx_traceable(model: nn.Module) -> nn.Module:
             skip = skip_connections[idx // 2]
             # Always interpolate to avoid Proxy bool control flow during FX tracing.
             x = F.interpolate(x, size=skip.shape[2:], mode="bilinear", align_corners=False)
-            x = torch.cat((skip, x), dim=1)
+            x = torch.cat((skip, x), dim=1)  # <-- can be forced FP32 via keep_concat_fp32 option
             x = self.decoders[idx + 1](x)
 
         return self.final_conv(x)
@@ -678,6 +734,7 @@ def run_ptq(
     keep_convtranspose_fp32: bool,
     keep_final_conv_fp32: bool,
     keep_batchnorm_fp32: bool,
+    keep_concat_fp32: bool,
     fuse_conv_bn: bool,
     num_threads: int | None,
     bench_warmup: int,
@@ -737,6 +794,7 @@ def run_ptq(
         keep_convtranspose_fp32=keep_convtranspose_fp32,
         keep_final_conv_fp32=keep_final_conv_fp32,
         keep_batchnorm_fp32=keep_batchnorm_fp32,
+        keep_concat_fp32=keep_concat_fp32,
     )
 
     model_for_quant = _make_unet_fx_traceable(copy.deepcopy(model_fp32)).eval()
@@ -814,6 +872,7 @@ def run_ptq(
             "keep_convtranspose_fp32": bool(keep_convtranspose_fp32),
             "keep_final_conv_fp32": bool(keep_final_conv_fp32),
             "keep_batchnorm_fp32": bool(keep_batchnorm_fp32),
+            "keep_concat_fp32": bool(keep_concat_fp32),
             "fuse_conv_bn": bool(fuse_conv_bn),
         },
         "cpu_benchmark": {
@@ -878,6 +937,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--calib-batch-size", type=int, default=1)
     parser.add_argument("--eval-batch-size", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=0)
+
     parser.add_argument(
         "--keep-convtranspose-fp32",
         dest="keep_convtranspose_fp32",
@@ -890,11 +950,13 @@ def _parse_args() -> argparse.Namespace:
         action="store_false",
         help="Allow ConvTranspose2d quantization.",
     )
+
     parser.add_argument(
         "--keep-final-conv-fp32",
         action="store_true",
         help="Keep final logits conv in float for better boundary stability.",
     )
+
     parser.add_argument(
         "--keep-bn-fp32",
         dest="keep_batchnorm_fp32",
@@ -907,6 +969,21 @@ def _parse_args() -> argparse.Namespace:
         action="store_false",
         help="Allow BatchNorm2d quantization / fusion.",
     )
+
+    # NEW: optionally keep concatenations in FP32 to avoid quantized-cat qparam mismatch issues
+    parser.add_argument(
+        "--keep-concat-fp32",
+        dest="keep_concat_fp32",
+        action="store_true",
+        help="Run torch.cat (skip concatenations) in FP32 by inserting dequant/quant boundaries (often improves Dice).",
+    )
+    parser.add_argument(
+        "--quantize-concat",
+        dest="keep_concat_fp32",
+        action="store_false",
+        help="Allow quantized torch.cat (may warn about mismatched qparams).",
+    )
+
     parser.add_argument(
         "--fuse-conv-bn",
         dest="fuse_conv_bn",
@@ -919,14 +996,16 @@ def _parse_args() -> argparse.Namespace:
         action="store_false",
         help="Disable FX fusion before PTQ.",
     )
+
     parser.add_argument("--num-threads", type=int, default=1)
     parser.add_argument("--bench-warmup", type=int, default=20)
     parser.add_argument("--bench-runs", type=int, default=100)
 
-    # Defaults: keep deconv float; fuse conv-bn; allow BN fusion by default (i.e., do NOT force BN float)
+    # Defaults: keep deconv float; fuse conv-bn; allow BN fusion by default; keep concat quantized by default
     parser.set_defaults(keep_convtranspose_fp32=True)
     parser.set_defaults(keep_batchnorm_fp32=False)
     parser.set_defaults(fuse_conv_bn=True)
+    parser.set_defaults(keep_concat_fp32=False)
 
     return parser.parse_args()
 
@@ -949,6 +1028,7 @@ def main():
         keep_convtranspose_fp32=args.keep_convtranspose_fp32,
         keep_final_conv_fp32=args.keep_final_conv_fp32,
         keep_batchnorm_fp32=args.keep_batchnorm_fp32,
+        keep_concat_fp32=args.keep_concat_fp32,
         fuse_conv_bn=args.fuse_conv_bn,
         num_threads=args.num_threads,
         bench_warmup=args.bench_warmup,
@@ -960,3 +1040,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Example command to run PTQ with custom options:
+# python -m src.quantization.ptq \
+#   --config /mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml \
+#   --model-phase baseline \
+#   --calib-batches 400 \
+#   --num-threads 4 \
+#   --keep-concat-fp32
