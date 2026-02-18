@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import argparse
 import copy
-import math
+import json
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.ao.quantization.quantize_fx import convert_fx, fuse_fx, prepare_qat_fx
 
 from src.training.eval_loop import run_evaluation
+from src.training.loss import get_loss_function
 from src.training.metrics import dice_score, iou_score
 from src.utils.config import load_config
 from src.utils.reproducibility import seed_everything
@@ -43,25 +45,30 @@ def _train_qat(
     train_loader,
     device: torch.device,
     *,
+    criterion: nn.Module,
+    eval_loader,
+    num_classes: int,
     epochs: int,
     lr: float,
-    weight_decay: float,
     grad_clip: float | None,
     bn_freeze_after: int,
-    log_every: int,
-) -> None:
+) -> dict[str, list[float]]:
     """
     Minimal, self-contained QAT fine-tune loop.
     Assumes segmentation logits [B,C,H,W] and targets [B,H,W] long.
     """
     model.to(device).train()
 
-    # If you use a different loss in your project (Dice+CE etc.),
-    # swap this for your own loss function.
-    criterion = nn.CrossEntropyLoss()
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    criterion = criterion.to(device)
+    # Match the main training pipeline optimizer choice.
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
 
-    global_step = 0
+    history: dict[str, list[float]] = {
+        "epoch": [],
+        "train_loss_mean": [],
+        "val_dice_mean": [],
+    }
+
     for ep in range(epochs):
         if bn_freeze_after >= 0 and ep >= bn_freeze_after:
             model.apply(_freeze_bn_stats)
@@ -92,14 +99,54 @@ def _train_qat(
 
             running += float(loss.detach().cpu())
             seen += 1
-            global_step += 1
-
-            if log_every > 0 and (global_step % log_every == 0):
-                avg = running / max(1, seen)
-                print(f"[QAT] epoch {ep+1}/{epochs} step {global_step} loss {avg:.4f}")
-
         avg = running / max(1, seen)
-        print(f"[QAT] epoch {ep+1}/{epochs} done | avg loss {avg:.4f}")
+        model.eval()
+        with torch.inference_mode():
+            dices: list[float] = []
+            for batch in eval_loader:
+                vx, vy = extract_inputs_targets(batch)
+                if vy is None:
+                    raise RuntimeError("QAT eval loader requires labels to compute Dice.")
+                vx = vx.to(device, non_blocking=True)
+                vy = vy.to(device, dtype=torch.long, non_blocking=True)
+                logits = model(vx)
+                dices.append(float(dice_score(logits, vy, num_classes=num_classes)))
+        val_dice = float(sum(dices) / max(1, len(dices)))
+        model.train()
+
+        history["epoch"].append(ep + 1)
+        history["train_loss_mean"].append(float(avg))
+        history["val_dice_mean"].append(float(val_dice))
+        print(f"[QAT] epoch {ep+1}/{epochs} | loss {avg:.4f} | val_dice {val_dice:.4f}")
+
+    return history
+
+
+def _save_qat_finetune_plot(history: dict[str, list[float]], out_path: Path) -> Path:
+    epochs = history["epoch"]
+    losses = history["train_loss_mean"]
+    dices = history["val_dice_mean"]
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    ax1.plot(epochs, losses, color="tab:blue", marker="o", label="Train Loss")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Train Loss", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+    ax1.grid(True, alpha=0.3)
+
+    ax2 = ax1.twinx()
+    ax2.plot(epochs, dices, color="tab:green", marker="s", label="Val Dice")
+    ax2.set_ylabel("Val Dice", color="tab:green")
+    ax2.tick_params(axis="y", labelcolor="tab:green")
+
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines + lines2, labels + labels2, loc="best")
+    plt.title("QAT Fine-tuning: Loss and Dice")
+    fig.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
+    return out_path
 
 
 def run_qat(
@@ -108,11 +155,11 @@ def run_qat(
     model_phase: str,
     train_source: str,
     backend: str,
-    qat_epochs: int,
-    qat_lr: float,
-    qat_weight_decay: float,
+    qat_epochs: int | None,
+    qat_lr: float | None,
     qat_grad_clip: float | None,
     bn_freeze_after: int,
+    qat_loss: str | None,
     train_batch_size: int,
     eval_batch_size: int,
     keep_convtranspose_fp32: bool,
@@ -139,6 +186,11 @@ def run_qat(
 
     train_cfg = cfg["train"]
     eval_cfg = cfg["evaluation"]
+    train_params = train_cfg.get("parameters", {})
+    loss_name = (qat_loss or train_params.get("loss_function", "ce")).lower()
+    criterion = get_loss_function(loss_name)
+    qat_epochs_resolved = int(qat_epochs if qat_epochs is not None else train_params.get("num_epochs", 1))
+    qat_lr_resolved = float(qat_lr if qat_lr is not None else train_params.get("learning_rate", 1e-3))
 
     # Train split to fine-tune QAT
     if train_source == "train":
@@ -186,10 +238,18 @@ def run_qat(
         keep_batchnorm_fp32=keep_batchnorm_fp32,
         keep_concat_fp32=keep_concat_fp32,
     )
+    from src.utils.paths import get_paths
 
-    model_for_qat = make_unet_fx_traceable(copy.deepcopy(model_fp32)).train()
+    paths = get_paths(cfg)
+    q_dir = paths.base_dir / "quantization_qat" / f"{model_phase}_{backend}"
+    q_dir.mkdir(parents=True, exist_ok=True)
+
+    model_for_qat = make_unet_fx_traceable(copy.deepcopy(model_fp32))
     if fuse_conv_bn:
+        # In this torch version, FX fusion expects eval-mode modules.
+        model_for_qat = model_for_qat.eval()
         model_for_qat = fuse_fx(model_for_qat)
+    model_for_qat = model_for_qat.train()
 
     prepared_qat = prepare_qat_fx(model_for_qat, qconfig_mapping, example_inputs)
 
@@ -199,24 +259,29 @@ def run_qat(
         qat_device = "cpu"
     train_dev = torch.device(qat_device)
 
-    _train_qat(
+    out_ch = int(train_cfg["model"]["out_channels"])
+    qat_history = _train_qat(
         prepared_qat,
         train_loader,
         train_dev,
-        epochs=qat_epochs,
-        lr=qat_lr,
-        weight_decay=qat_weight_decay,
+        criterion=criterion,
+        eval_loader=eval_loader,
+        num_classes=out_ch,
+        epochs=qat_epochs_resolved,
+        lr=qat_lr_resolved,
         grad_clip=qat_grad_clip,
         bn_freeze_after=bn_freeze_after,
-        log_every=50,
     )
+    qat_metrics_path = q_dir / "qat_finetune_metrics.json"
+    with qat_metrics_path.open("w") as f:
+        json.dump(qat_history, f, indent=2)
+    qat_plot_path = _save_qat_finetune_plot(qat_history, q_dir / "qat_finetune_curves.png")
 
     # Convert to int8 on CPU
     prepared_qat.to(cpu).eval()
     model_int8 = convert_fx(prepared_qat).eval()
 
     # Evaluate on CPU for apples-to-apples with PTQ
-    out_ch = int(train_cfg["model"]["out_channels"])
     eval_fp32, _ = run_evaluation(
         model=model_fp32,
         loader=eval_loader,
@@ -241,12 +306,6 @@ def run_qat(
     lat_fp32 = latency_ms(model_fp32, sample, warmup=bench_warmup, runs=bench_runs, num_threads=num_threads)
     lat_int8 = latency_ms(model_int8, sample, warmup=bench_warmup, runs=bench_runs, num_threads=num_threads)
 
-    from src.utils.paths import get_paths
-
-    paths = get_paths(cfg)
-    q_dir = paths.base_dir / "quantization_qat" / f"{model_phase}_{backend}"
-    q_dir.mkdir(parents=True, exist_ok=True)
-
     # Save artifacts
     fp32_sd_path = q_dir / "fp32_reference_state_dict.pth"
     qat_sd_path = q_dir / "qat_prepared_state_dict.pth"
@@ -270,9 +329,10 @@ def run_qat(
             "img_dir": str(train_img_dir),
             "label_dir": str(train_lbl_dir),
             "batch_size": int(train_batch_size),
-            "epochs": int(qat_epochs),
-            "lr": float(qat_lr),
-            "weight_decay": float(qat_weight_decay),
+            "loss_function": loss_name,
+            "optimizer": "adam",
+            "epochs": int(qat_epochs_resolved),
+            "lr": float(qat_lr_resolved),
             "grad_clip": float(qat_grad_clip) if qat_grad_clip is not None else None,
             "bn_freeze_after_epoch": int(bn_freeze_after),
             "device": str(train_dev),
@@ -312,6 +372,8 @@ def run_qat(
             "fp32_state_dict": str(fp32_sd_path),
             "qat_prepared_state_dict": str(qat_sd_path),
             "int8_state_dict": str(int8_sd_path),
+            "qat_finetune_metrics": str(qat_metrics_path),
+            "qat_finetune_plot": str(qat_plot_path),
         },
     }
 
@@ -332,10 +394,26 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--train-source", type=str, default="train", choices=["train", "eval"])
     p.add_argument("--backend", type=str, default="fbgemm", choices=["fbgemm", "qnnpack"])
 
-    p.add_argument("--qat-epochs", type=int, default=10)
-    p.add_argument("--qat-lr", type=float, default=1e-4)
-    p.add_argument("--qat-weight-decay", type=float, default=0.0)
+    p.add_argument(
+        "--qat-epochs",
+        type=int,
+        default=None,
+        help="QAT fine-tune epochs. If omitted, uses config train.parameters.num_epochs.",
+    )
+    p.add_argument(
+        "--qat-lr",
+        type=float,
+        default=None,
+        help="QAT learning rate. If omitted, uses config train.parameters.learning_rate.",
+    )
     p.add_argument("--qat-grad-clip", type=float, default=0.0)
+    p.add_argument(
+        "--qat-loss",
+        type=str,
+        default=None,
+        choices=["ce", "dice", "ce_dice", "focal", "dice_focal"],
+        help="QAT fine-tune loss. If omitted, uses config train.parameters.loss_function.",
+    )
     p.add_argument(
         "--bn-freeze-after",
         type=int,
@@ -385,9 +463,9 @@ def main():
         backend=args.backend,
         qat_epochs=args.qat_epochs,
         qat_lr=args.qat_lr,
-        qat_weight_decay=args.qat_weight_decay,
         qat_grad_clip=grad_clip,
         bn_freeze_after=args.bn_freeze_after,
+        qat_loss=args.qat_loss,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
         keep_convtranspose_fp32=args.keep_convtranspose_fp32,
