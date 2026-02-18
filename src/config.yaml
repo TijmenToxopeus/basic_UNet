@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp79_ptq_MM
+  experiment_name: exp80_ptq_acdc
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -33,8 +33,8 @@ evaluation:
   num_slices_per_volume: null
   num_visuals: 3
   paths:
-    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset300_MM/imagesTs
-    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset300_MM/labelsTs
+    eval_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/imagesTs
+    label_dir: /mnt/hdd/ttoxopeus/datasets/nnUNet_raw/Dataset200_ACDC/labelsTs
     save_root: results
   bn_recalibration:
     enabled: true
