@@ -464,7 +464,7 @@
 # THRESHOLDS = [.99, .98, .96, .94, 0.92, 0.88, 0.84, 0.8, 0.75, 0.7, 0.65, 0.6, 0.5, 0.4, 0.3, 0.2]
 
 # # Your similarity-based method name (based on your config)
-# SIM_METHOD = "correlation"
+# SIM_METHOD = "pearson_correlation"
 
 
 # def run(cmd: str):
@@ -533,7 +533,7 @@
 # 3) DECODER_ONLY: only decoder blocks active
 #
 # For each run:
-# - sets pruning.method = "correlation"
+# - sets pruning.method = "pearson_correlation"
 # - sets pruning.threshold = <thr>
 # - disables pruning.reinitialize_weights
 # - sets cfg["pruning"]["ratios"]["block_ratios"] for the active blocks (others to 0.0)
@@ -552,7 +552,7 @@ BACKUP_PATH = CONFIG_PATH + ".backup"
 # Similarity pruning sweep config
 # -------------------------------
 THRESHOLDS = [0.99, 0.98, 0.96, 0.94, 0.92, 0.88, 0.84, 0.8, 0.75, 0.7, 0.65, 0.6, 0.5, 0.4, 0.3, 0.2]
-SIM_METHOD = "correlation"
+SIM_METHOD = "pearson_correlation"
 
 # -------------------------------
 # Block definitions

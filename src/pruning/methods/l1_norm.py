@@ -7,10 +7,10 @@ import json
 import torch
 
 from .base import BasePruningMethod, PruneOutput
-from src.pruning.model_inspect import (
-    model_to_dataframe_with_l1,
+from src.pruning.importance_pruning import (
+    model_to_dataframe_with_importance,
     compute_l1_norms,
-    compute_l1_stats,
+    compute_importance_stats,
     get_pruning_masks_blockwise,
 )
 
@@ -32,8 +32,8 @@ class L1NormPruning(BasePruningMethod):
         default_ratio = pruning_cfg.get("ratios", {}).get("default", 0.25)
 
         norms = compute_l1_norms(model)
-        l1_stats = compute_l1_stats(norms)
-        df = model_to_dataframe_with_l1(model, l1_stats, remove_nan_layers=True)
+        l1_stats = compute_importance_stats(norms, label="L1")
+        df = model_to_dataframe_with_importance(model, l1_stats, remove_nan_layers=True, mean_stat_col="Mean L1")
 
         masks = get_pruning_masks_blockwise(
             model,

@@ -1,11 +1,17 @@
 from .base import PruneOutput, BasePruningMethod
 from .l1_norm import L1NormPruning
-from .similar_feature import SimilarFeaturePruning
+from .l2_norm import L2NormPruning
+from .pearson_correlation import PearsonCorrelationPruning
+from .cosine_similarity import CosineSimilarityPruning
 
 
 _METHODS = {
     "l1_norm": L1NormPruning(),
-    "correlation": SimilarFeaturePruning(),
+    "l2_norm": L2NormPruning(),
+    "pearson_correlation": PearsonCorrelationPruning(),
+    "cosine_similarity": CosineSimilarityPruning(),
+    "cosine": CosineSimilarityPruning(),  # backward-compatible alias
+    "correlation": PearsonCorrelationPruning(),  # backward-compatible alias
 }
 
 

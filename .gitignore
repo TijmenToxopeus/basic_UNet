@@ -30,6 +30,11 @@ checkpoints/
 *.pt
 *.ckpt
 
+# --- Pruning generated artifacts inside src/ ---
+src/pruning/l1_analysis/
+src/pruning/__pycache__/
+src/pruning/methods/__pycache__/
+
 # --- Data and intermediate files ---
 datasets/
 data/

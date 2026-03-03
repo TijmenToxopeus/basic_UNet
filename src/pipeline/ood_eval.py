@@ -28,6 +28,7 @@ def _parse_suffix(suffix: str, block_order: list[str]) -> dict:
     Expected examples:
     - l1_norm_50_50_50_50_50_50_50_50_50_50_50
     - corr_t90_50_50_50_50_50_50_50_50_50_50_50
+    - cos_t90_50_50_50_50_50_50_50_50_50_50_50
     - l1_norm_50_..._random
     - l1_norm_50_..._rewind
     """
@@ -41,18 +42,24 @@ def _parse_suffix(suffix: str, block_order: list[str]) -> dict:
     else:
         core = suffix
 
-    m = re.match(r"^(l1_norm|corr_t\d+)_(.+)$", core)
+    m = re.match(r"^(l1_norm|l2_norm|corr_t\d+|cos_t\d+)_(.+)$", core)
     if not m:
         raise ValueError(f"Unrecognized suffix format: {suffix}")
 
     method_token, ratios_token = m.groups()
 
-    if method_token == "l1_norm":
-        method = "l1_norm"
+    if method_token in ("l1_norm", "l2_norm"):
+        method = method_token
         threshold = None
-    else:
-        method = "correlation"
+    elif method_token.startswith("corr_t"):
+        method = "pearson_correlation"
         thr_match = re.match(r"corr_t(\d+)", method_token)
+        if not thr_match:
+            raise ValueError(f"Could not parse threshold from: {method_token}")
+        threshold = int(thr_match.group(1)) / 100.0
+    else:
+        method = "cosine_similarity"
+        thr_match = re.match(r"cos_t(\d+)", method_token)
         if not thr_match:
             raise ValueError(f"Could not parse threshold from: {method_token}")
         threshold = int(thr_match.group(1)) / 100.0

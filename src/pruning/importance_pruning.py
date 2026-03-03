@@ -1,0 +1,485 @@
+import os
+import torch
+import torch.nn as nn
+import pandas as pd
+import numpy as np
+
+# --- NEW: optional reproducibility (your helper file) ---
+from src.utils.reproducibility import seed_everything
+
+
+# -----------------------------------------------------------------------------
+# 1️⃣ Compute per-layer norm scores
+# -----------------------------------------------------------------------------
+def compute_filter_norms(model: nn.Module, ord: int = 1) -> dict:
+    """
+    Compute per-filter norms for all Conv2d and ConvTranspose2d layers.
+
+    Args:
+        model: model to inspect.
+        ord: norm order passed to ``torch.linalg.vector_norm`` (e.g. 1 or 2).
+
+    Returns:
+        dict: {layer_name: torch.Tensor of shape [out_channels]}
+    """
+    norms = {}
+    for name, layer in model.named_modules():
+        if isinstance(layer, (nn.Conv2d, nn.ConvTranspose2d)):
+            w = layer.weight.data.view(layer.weight.size(0), -1)
+            norm_vals = torch.linalg.vector_norm(w, ord=ord, dim=1)
+            norms[name] = norm_vals
+    return norms
+
+
+def compute_importance_norms(model: nn.Module, ord: int = 1) -> dict:
+    """
+    Generic alias for per-filter importance norms.
+    """
+    return compute_filter_norms(model=model, ord=ord)
+
+
+def compute_l1_norms(model: nn.Module) -> dict:
+    """
+    Compute per-filter L1 norms for all Conv2d and ConvTranspose2d layers in a model.
+
+    Returns:
+        dict: {layer_name: torch.Tensor of shape [out_channels]}
+    """
+    return compute_filter_norms(model, ord=1)
+
+
+def compute_l2_norms(model: nn.Module) -> dict:
+    """
+    Compute per-filter L2 norms for all Conv2d and ConvTranspose2d layers in a model.
+
+    Returns:
+        dict: {layer_name: torch.Tensor of shape [out_channels]}
+    """
+    return compute_filter_norms(model, ord=2)
+
+
+# -----------------------------------------------------------------------------
+# 2️⃣ Compute summary statistics from norm scores
+# -----------------------------------------------------------------------------
+def compute_norm_stats(norms: dict, label: str = "L1") -> dict:
+    """
+    Compute summary statistics from per-filter norm values.
+
+    Args:
+        norms (dict): {layer_name: torch.Tensor of norm values}
+        label (str): label prefix, e.g. "L1" or "L2"
+
+    Returns:
+        dict: {layer_name: {f"Mean {label}", f"Min {label}", ...}}
+    """
+    stats = {}
+    for name, vals in norms.items():
+        stats[name] = {
+            f"Mean {label}": vals.mean().item(),
+            f"Min {label}": vals.min().item(),
+            f"Max {label}": vals.max().item(),
+            f"{label} Std": vals.std().item(),
+        }
+    return stats
+
+
+def compute_importance_stats(norms: dict, label: str = "Importance") -> dict:
+    """
+    Generic alias for summary statistics from importance scores.
+    """
+    return compute_norm_stats(norms=norms, label=label)
+
+
+def compute_l1_stats(norms: dict) -> dict:
+    """
+    Compute summary statistics from per-filter L1 norms.
+
+    Args:
+        norms (dict): {layer_name: torch.Tensor of L1 values}
+
+    Returns:
+        dict: {layer_name: {'Mean L1','Min L1','Max L1','L1 Std'}}
+    """
+    return compute_norm_stats(norms, label="L1")
+
+
+def compute_l2_stats(norms: dict) -> dict:
+    """
+    Compute summary statistics from per-filter L2 norms.
+
+    Args:
+        norms (dict): {layer_name: torch.Tensor of L2 values}
+
+    Returns:
+        dict: {layer_name: {'Mean L2','Min L2','Max L2','L2 Std'}}
+    """
+    return compute_norm_stats(norms, label="L2")
+
+
+def _infer_block_from_layer_name(name: str) -> str:
+    """
+    Map a module name like 'encoders.0.net.0' -> 'encoders.0'
+    and 'bottleneck.net.0' -> 'bottleneck'
+    """
+    parts = name.split(".")
+    if parts[0] == "bottleneck":
+        return "bottleneck"
+    if len(parts) >= 2:
+        return ".".join(parts[:2])  # e.g. encoders.0, decoders.3
+    return parts[0]
+
+
+def _should_skip_for_pruning(layer_name: str, layer: nn.Module) -> bool:
+    """
+    Skip layers that should never be structurally pruned:
+    - final classifier conv
+    - ConvTranspose2d upsampling layers (changing them breaks shapes unless handled carefully)
+    """
+    if "final_conv" in layer_name:
+        return True
+    if isinstance(layer, nn.ConvTranspose2d):
+        return True
+    return False
+
+
+# -----------------------------------------------------------------------------
+# 3️⃣ Generate pruning masks (structured, block-wise)
+# -----------------------------------------------------------------------------
+def get_pruning_masks_blockwise(
+    model: nn.Module,
+    norms: dict,
+    block_ratios: dict = None,
+    default_ratio: float = 0.3,
+    seed: int | None = None,
+    deterministic: bool = False,
+):
+    """
+    Generate structured pruning masks based on L1 norms and block ratios.
+
+    Key improvement vs thresholding:
+    - Uses top-k smallest L1 filters (tie-safe) so you prune exactly k filters.
+
+    Args:
+        model: Model to inspect.
+        norms: {layer_name: L1 tensor per filter}
+        block_ratios: {block_name: prune_ratio}
+        default_ratio: default prune ratio if block not specified
+        seed: optional global seed for consistency
+        deterministic: if True, enable deterministic torch settings
+
+    Returns:
+        masks: {layer_name: torch.BoolTensor mask of kept channels}
+    """
+    if seed is not None:
+        seed_everything(seed, deterministic=deterministic)
+
+    masks = {}
+    block_ratios = block_ratios or {}
+
+    print("🔧 Generating pruning masks...\n")
+
+    # For correct skip behavior, we need access to the layer objects too
+    layer_lookup = dict(model.named_modules())
+
+    for name, l1_vals in norms.items():
+        num_out = int(l1_vals.numel())
+        layer = layer_lookup.get(name, None)
+
+        block = _infer_block_from_layer_name(name)
+        ratio = float(block_ratios.get(block, default_ratio))
+
+        # Skip layers that shouldn't be pruned structurally
+        if layer is not None and _should_skip_for_pruning(name, layer):
+            masks[name] = torch.ones(num_out, dtype=torch.bool)
+            continue
+
+        # Clamp ratio into [0,1]
+        ratio = max(0.0, min(1.0, ratio))
+
+        if ratio <= 0.0:
+            mask = torch.ones(num_out, dtype=torch.bool)
+            print(f"Block {block:15s} | ratio=0.00 → keeping all {num_out} filters.")
+            masks[name] = mask
+            continue
+
+        if ratio >= 1.0:
+            mask = torch.zeros(num_out, dtype=torch.bool)
+            print(f"Block {block:15s} | ratio=1.00 → pruning all {num_out} filters.")
+            masks[name] = mask
+            continue
+
+        # --- Tie-safe top-k pruning ---
+        k_prune = int(np.floor(num_out * ratio))
+        k_prune = max(0, min(num_out, k_prune))
+
+        if k_prune == 0:
+            mask = torch.ones(num_out, dtype=torch.bool)
+            print(f"Block {block:15s} | Layer {name:25s} | ratio={ratio:.2f} | prune=0 → kept {num_out}/{num_out}")
+            masks[name] = mask
+            continue
+
+        # Sort ascending (smallest L1 = least important)
+        # argsort is deterministic given the same tensor values on CPU
+        # (and still stable enough for our purposes)
+        sorted_idx = torch.argsort(l1_vals, descending=False)
+
+        prune_idx = sorted_idx[:k_prune]
+        mask = torch.ones(num_out, dtype=torch.bool)
+        mask[prune_idx] = False
+
+        kept = int(mask.sum().item())
+        print(
+            f"Block {block:15s} | Layer {name:25s} | ratio={ratio:.2f} | "
+            f"pruned {k_prune}/{num_out} | kept {kept}/{num_out}"
+        )
+
+        masks[name] = mask
+
+    return masks
+
+
+# -----------------------------------------------------------------------------
+# 4️⃣ Compute actual prune ratios (unchanged)
+# -----------------------------------------------------------------------------
+def compute_actual_prune_ratios(original_model, pruned_model):
+    """
+    Compare two models (same architecture) and compute actual pruning ratios
+    for Conv2d layers (based on output channels).
+    """
+    ratios = {}
+    for (name_orig, layer_orig), (name_pruned, layer_pruned) in zip(
+        original_model.named_modules(), pruned_model.named_modules()
+    ):
+        if isinstance(layer_orig, nn.Conv2d) and isinstance(layer_pruned, nn.Conv2d):
+            if layer_orig.out_channels > 0:
+                ratio = 1 - (layer_pruned.out_channels / layer_orig.out_channels)
+                ratios[name_orig] = round(float(ratio), 4)
+    return ratios
+
+
+# -----------------------------------------------------------------------------
+# 5️⃣ Build model summary DataFrame
+# -----------------------------------------------------------------------------
+def model_to_dataframe_with_importance(
+    model: nn.Module,
+    importance_stats: dict,
+    block_ratios: dict = None,
+    post_prune_ratios: dict = None,
+    remove_nan_layers: bool = False,
+    mean_stat_col: str | None = None,
+) -> pd.DataFrame:
+    """
+    Build a DataFrame summarizing all convolutional + batchnorm layers
+    in a UNet-like model.
+    """
+    layers = []
+
+    for name, layer in model.named_modules():
+        layer_type = layer.__class__.__name__
+
+        if isinstance(layer, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
+            shape = None
+            if hasattr(layer, "weight") and isinstance(layer.weight, torch.Tensor):
+                shape = tuple(layer.weight.shape)
+
+            num_params = sum(p.numel() for p in layer.parameters())
+
+            if isinstance(layer, nn.BatchNorm2d):
+                in_ch = out_ch = layer.num_features
+            else:
+                in_ch = layer.in_channels
+                out_ch = layer.out_channels
+
+            stats = importance_stats.get(name, {})
+
+            layers.append({
+                "Layer": name,
+                "Type": layer_type,
+                "Shape": shape,
+                "In Ch": in_ch,
+                "Out Ch": out_ch,
+                "Num Params": num_params,
+                **stats
+            })
+
+    df = pd.DataFrame(layers)
+
+    enc = df[df["Layer"].str.startswith("encoders")].copy()
+    bott = df[df["Layer"].str.startswith("bottleneck")].copy()
+    dec = df[df["Layer"].str.startswith("decoders") | df["Layer"].str.startswith("final_conv")].copy()
+
+    df_sorted = pd.concat([enc, bott, dec], ignore_index=True)
+
+    if mean_stat_col is None:
+        mean_cols = [c for c in df_sorted.columns if c.startswith("Mean ")]
+        mean_stat_col = mean_cols[0] if mean_cols else None
+
+    if remove_nan_layers and mean_stat_col is not None and mean_stat_col in df_sorted.columns:
+        df_sorted = df_sorted.dropna(subset=[mean_stat_col]).reset_index(drop=True)
+    else:
+        df_sorted = df_sorted.reset_index(drop=True)
+
+    df_sorted["Block Ratio"] = None
+    df_sorted["Post-Prune Ratio"] = None
+
+    if block_ratios:
+        for block_name, ratio in block_ratios.items():
+            mask = df_sorted["Layer"].str.startswith(block_name)
+            df_sorted.loc[mask, "Block Ratio"] = ratio
+
+    if post_prune_ratios:
+        for layer_name, ratio in post_prune_ratios.items():
+            df_sorted.loc[df_sorted["Layer"] == layer_name, "Post-Prune Ratio"] = ratio
+
+    return df_sorted
+
+
+def model_to_dataframe_with_l1(
+    model: nn.Module,
+    l1_stats: dict,
+    block_ratios: dict = None,
+    post_prune_ratios: dict = None,
+    remove_nan_layers: bool = False
+) -> pd.DataFrame:
+    """
+    Backward-compatible wrapper for L1-based summaries.
+    """
+    return model_to_dataframe_with_importance(
+        model=model,
+        importance_stats=l1_stats,
+        block_ratios=block_ratios,
+        post_prune_ratios=post_prune_ratios,
+        remove_nan_layers=remove_nan_layers,
+        mean_stat_col="Mean L1",
+    )
+
+
+# -----------------------------------------------------------------------------
+# 6️⃣ Visualization utilities for L1 distributions
+# -----------------------------------------------------------------------------
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+
+def compute_global_hist_max(norms: dict, bins=40, logx=False):
+    global_max = 0
+    for vals in norms.values():
+        vals = vals.cpu().numpy()
+        if logx:
+            vals = vals[vals > 0]
+        counts, _ = np.histogram(vals, bins=bins)
+        if counts.size > 0:
+            global_max = max(global_max, int(counts.max()))
+    return max(global_max, 1)
+
+
+def plot_importance_histograms(norms: dict, save_dir=None, bins=40, logx=False, label: str = "Importance"):
+    global_ymax = compute_global_hist_max(norms, bins=bins, logx=logx)
+
+    for name, vals in norms.items():
+        vals = vals.cpu().numpy()
+
+        mean = np.mean(vals)
+        median = np.median(vals)
+        p25, p75 = np.percentile(vals, [25, 75])
+        minv, maxv = np.min(vals), np.max(vals)
+
+        plt.figure(figsize=(6, 3))
+        sns.histplot(vals, bins=bins, alpha=0.7, edgecolor="black")
+
+        if logx:
+            plt.xscale("log")
+
+        plt.ylim(0, global_ymax)
+
+        plt.axvline(mean, linestyle="--", linewidth=1, label=f"Mean = {mean:.2f}")
+        plt.axvline(median, linestyle="-", linewidth=1.2, label=f"Median = {median:.2f}")
+        plt.axvline(p25, linestyle=":", linewidth=1)
+        plt.axvline(p75, linestyle=":", linewidth=1)
+
+        textstr = f"min = {minv:.2f}\nmax = {maxv:.2f}\n"
+        plt.gca().text(
+            0.98, 0.95, textstr, transform=plt.gca().transAxes,
+            fontsize=8, va="top", ha="right",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.6)
+        )
+
+        plt.title(name)
+        plt.xlabel(f"Per-filter {label} score")
+        plt.ylabel("Count")
+        plt.legend(fontsize=8)
+        plt.tight_layout()
+
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            path = os.path.join(save_dir, f"{name.replace('.', '_')}_hist.png")
+            plt.savefig(path, dpi=150)
+            plt.close()
+        else:
+            plt.show()
+
+
+def plot_l1_histograms(norms: dict, save_dir=None, bins=40, logx=False):
+    """
+    Backward-compatible wrapper for L1 visualizations.
+    """
+    return plot_importance_histograms(norms, save_dir=save_dir, bins=bins, logx=logx, label="L1")
+
+
+def plot_importance_summary(df: pd.DataFrame, save_path=None, mean_col: str | None = None):
+    if mean_col is None:
+        mean_cols = [c for c in df.columns if c.startswith("Mean ")]
+        mean_col = mean_cols[0] if mean_cols else None
+    if mean_col is None:
+        raise ValueError("Could not infer mean metric column. Provide `mean_col`.")
+    plt.figure(figsize=(10, 4))
+    sns.barplot(data=df, x="Layer", y=mean_col)
+    plt.xticks(rotation=90, fontsize=6)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
+
+
+def plot_l1_summary(df: pd.DataFrame, save_path=None):
+    """
+    Backward-compatible wrapper for L1 summary bar plot.
+    """
+    return plot_importance_summary(df, save_path=save_path, mean_col="Mean L1")
+
+
+def inspect_model_importance(model, save_dir=None, ord: int = 1, label: str = "L1"):
+    norms = compute_importance_norms(model, ord=ord)
+    stats = compute_importance_stats(norms, label=label)
+    df = model_to_dataframe_with_importance(model, stats, mean_stat_col=f"Mean {label}")
+
+    label_lower = label.lower().replace(" ", "_")
+    summary_name = f"{label_lower}_summary.csv"
+    mean_plot_name = f"{label_lower}_means.png"
+
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        df.to_csv(os.path.join(save_dir, summary_name), index=False)
+        plot_importance_histograms(norms, save_dir=save_dir, label=label)
+        plot_importance_summary(df, save_path=os.path.join(save_dir, mean_plot_name), mean_col=f"Mean {label}")
+    else:
+        plot_importance_histograms(norms, label=label)
+        plot_importance_summary(df, mean_col=f"Mean {label}")
+
+    return df
+
+
+def inspect_model_l1(model, save_dir=None):
+    """
+    Backward-compatible wrapper for L1 inspection.
+    """
+    return inspect_model_importance(model, save_dir=save_dir, ord=1, label="L1")
+
+
+def inspect_model_l2(model, save_dir=None):
+    """
+    Convenience wrapper for L2 inspection.
+    """
+    return inspect_model_importance(model, save_dir=save_dir, ord=2, label="L2")

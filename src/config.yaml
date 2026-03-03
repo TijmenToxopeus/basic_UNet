@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp80_ptq_acdc
+  experiment_name: exp82_compare_redundancy
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -20,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.009
-    num_epochs: 25
+    num_epochs: 15
     save_interval: 5
     loss_function: ce_dice
   paths:
@@ -40,8 +40,8 @@ evaluation:
     enabled: true
     num_batches: 5
 pruning:
-  method: l1_norm
-  threshold: 0.85
+  method: l1_norm # options: l1_norm | l2_norm | pearson_correlation | cosine_similarity
+  threshold: 0.40
   num_slices: 200
   reinitialize_weights: null
   ckpt_path:

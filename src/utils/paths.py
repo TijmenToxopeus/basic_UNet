@@ -148,10 +148,16 @@ class ExperimentPaths:
         # ------------------------------
         # 1) METHOD PREFIX
         # ------------------------------
-        if method == "correlation":
+        if method in ("correlation", "pearson_correlation"):
             threshold = prune_cfg.get("threshold", 0.90)   # default
             t_int = int(threshold * 100)
             method_prefix = f"corr_t{t_int}"
+        elif method in ("cosine", "cosine_similarity"):
+            threshold = prune_cfg.get("threshold", 0.90)   # default
+            t_int = int(threshold * 100)
+            method_prefix = f"cos_t{t_int}"
+        elif method == "l2_norm":
+            method_prefix = "l2_norm"
         else:
             method_prefix = "l1_norm"
 

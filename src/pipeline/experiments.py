@@ -72,7 +72,7 @@ def run_full_experiment():
             "tag": "sf_t90",
             "patch": {
                 "pruning": {
-                    "method": "similar_feature",
+                    "method": "pearson_correlation",
                     "threshold": 0.90,
                     "reinitialize_weights": None,
                 },

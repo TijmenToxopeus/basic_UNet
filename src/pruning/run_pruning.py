@@ -65,7 +65,7 @@ def run_pruning(cfg=None):
     print(f"📦 Loaded baseline model: {baseline_ckpt}")
 
     # ----------------------------
-    # Select pruning method (l1_norm / similar_feature)
+    # Select pruning method (l1_norm / l2_norm / pearson_correlation / cosine_similarity)
     # ----------------------------
     method_name = pruning_cfg.get("method", "l1_norm")
     pruner = get_method(method_name)

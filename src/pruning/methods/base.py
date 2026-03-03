@@ -9,7 +9,7 @@ import torch
 @dataclass
 class PruneOutput:
     masks: Dict[str, Any]                 # whatever your rebuild expects
-    method: str                           # "l1_norm" | "correlation"
+    method: str                           # "l1_norm" | "l2_norm" | "pearson_correlation" | "cosine_similarity"
     extra: Dict[str, Any]                 # optional: df stats, threshold used, etc.
 
 
