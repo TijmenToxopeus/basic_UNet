@@ -17,6 +17,7 @@ def plot_first_layer_grid(
     num_cols=8,
     normalize=True,
     layer_name="encoders.0.net.0",
+    show_annotations=True,
 ):
     fmap = feature_maps[0].detach().cpu()  # [C, H, W]
     C_total = fmap.shape[0]
@@ -28,7 +29,7 @@ def plot_first_layer_grid(
 
     if l1_norms is not None:
         l1_norms = l1_norms.detach().cpu().float()
-        if l1_norms.numel() < C_show:
+        if show_annotations and l1_norms.numel() < C_show:
             raise ValueError(f'l1_norms has {l1_norms.numel()} entries but need at least {C_show}')
 
     fig, axes = plt.subplots(grid_size, grid_size, figsize=(grid_size * 2.05, grid_size * 2.05), dpi=140)
@@ -48,19 +49,20 @@ def plot_first_layer_grid(
 
         ax.imshow(img, cmap='copper', interpolation='nearest')
 
-        # Channel index
-        ax.text(
-            0.02, 0.02, f'ch {i}',
-            color='white', fontsize=12, fontweight='bold',
-            ha='left', va='bottom', transform=ax.transAxes,
-            bbox=dict(boxstyle='round,pad=0.20', facecolor='black', edgecolor='white', linewidth=1.0, alpha=0.80),
-            zorder=30,
-        )
+        if show_annotations:
+            # Channel index
+            ax.text(
+                0.02, 0.02, f'ch {i}',
+                color='white', fontsize=12, fontweight='bold',
+                ha='left', va='bottom', transform=ax.transAxes,
+                bbox=dict(boxstyle='round,pad=0.20', facecolor='black', edgecolor='white', linewidth=1.0, alpha=0.80),
+                zorder=30,
+            )
 
-        if l1_norms is not None:
+        if show_annotations and l1_norms is not None:
             ax.text(
                 0.97, 0.97, f'L1 {float(l1_norms[i]):.2f}',
-                color='yellow', fontsize=10, fontweight='bold',
+                color='yellow', fontsize=12, fontweight='bold',
                 ha='right', va='top', transform=ax.transAxes,
                 bbox=dict(boxstyle='round,pad=0.14', facecolor='black', edgecolor='yellow', linewidth=0.8, alpha=0.80),
                 zorder=31,
@@ -82,7 +84,7 @@ def plot_first_layer_grid(
             ax.add_patch(
                 patches.Rectangle(
                     (0, 0), 1, 1,
-                    fill=True, facecolor='red', alpha=0.18,
+                    fill=True, facecolor='red', alpha=0.35,
                     linewidth=0, transform=ax.transAxes, zorder=2
                 )
             )
@@ -90,7 +92,7 @@ def plot_first_layer_grid(
             ax.add_patch(
                 patches.Rectangle(
                     (0, 0), 1, 1,
-                    fill=True, facecolor='royalblue', alpha=0.18,
+                    fill=True, facecolor='royalblue', alpha=0.45,
                     linewidth=0, transform=ax.transAxes, zorder=2
                 )
             )
@@ -104,13 +106,13 @@ def plot_first_layer_grid(
             ax.add_patch(patches.Rectangle((0, 0), 1, 1, fill=False, edgecolor='royalblue', linewidth=6.0, transform=ax.transAxes, zorder=10))
 
     legend_handles = [
-        patches.Patch(facecolor='none', edgecolor='red', linewidth=6, label='Pruned by L1'),
-        patches.Patch(facecolor='none', edgecolor='royalblue', linewidth=6, label='Pruned by feature-map method'),
+        patches.Patch(facecolor='none', edgecolor='red', linewidth=6, label='L1'),
+        patches.Patch(facecolor='none', edgecolor='royalblue', linewidth=6, label='Pearson'),
     ]
 
     fig.suptitle(f'First-layer feature maps with pruning overlays ({layer_name})', fontsize=26, y=0.995)
-    fig.legend(handles=legend_handles, loc='upper center', ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.968), prop={'size': 18})
-    plt.subplots_adjust(top=0.91, wspace=0.05, hspace=0.08)
+    fig.legend(handles=legend_handles, loc='lower center', ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.03), prop={'size': 18})
+    plt.subplots_adjust(top=0.91, bottom=0.08, wspace=0.05, hspace=0.08)
     plt.show()
 
     if C_total > max_tiles:

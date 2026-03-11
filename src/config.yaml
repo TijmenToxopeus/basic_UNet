@@ -1,5 +1,5 @@
 experiment:
-  experiment_name: exp82_compare_redundancy
+  experiment_name: exp70_uniform_corr_acdc
   model_name: UNet_ACDC
   seed: 42
   deterministic: true
@@ -20,7 +20,7 @@ train:
     - 512
   parameters:
     learning_rate: 0.009
-    num_epochs: 15
+    num_epochs: 25
     save_interval: 5
     loss_function: ce_dice
   paths:
@@ -40,8 +40,8 @@ evaluation:
     enabled: true
     num_batches: 5
 pruning:
-  method: l1_norm # options: l1_norm | l2_norm | pearson_correlation | cosine_similarity
-  threshold: 0.40
+  method: pearson_correlation # options: l1_norm | l2_norm | pearson_correlation | cosine_similarity
+  threshold: 0.82
   num_slices: 200
   reinitialize_weights: null
   ckpt_path:
@@ -53,14 +53,14 @@ pruning:
   ratios:
     default: 0.25
     block_ratios:
-      encoders.0: 0.20
-      encoders.1: 0.20
-      encoders.2: 0.20
-      encoders.3: 0.20
-      encoders.4: 0.20
-      bottleneck: 0.20
-      decoders.1: 0.20
-      decoders.3: 0.20
-      decoders.5: 0.20
-      decoders.7: 0.20
-      decoders.9: 0.20
+      encoders.0: 0.999
+      encoders.1: 0.999
+      encoders.2: 0.999
+      encoders.3: 0.999
+      encoders.4: 0.999
+      bottleneck: 0.999
+      decoders.1: 0.999
+      decoders.3: 0.999
+      decoders.5: 0.999
+      decoders.7: 0.999
+      decoders.9: 0.999

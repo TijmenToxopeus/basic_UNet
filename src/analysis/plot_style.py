@@ -20,7 +20,7 @@ PUBLICATION_RCPARAMS = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "axes.grid": True,
-    "grid.alpha": 0.18,
+    "grid.alpha": 0.45,
     "grid.linestyle": "--",
     "axes.labelsize": 11,
     "axes.titlesize": 13,
