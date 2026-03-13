@@ -47,7 +47,7 @@ def plot_first_layer_grid(
             if mx > mn:
                 img = (img - mn) / (mx - mn)
 
-        ax.imshow(img, cmap='copper', interpolation='nearest')
+        ax.imshow(img, cmap='gray', interpolation='nearest')
 
         if show_annotations:
             # Channel index
