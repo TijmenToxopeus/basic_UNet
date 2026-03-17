@@ -404,14 +404,16 @@ def compute_similarity_matrix_multi(
             X = X.to(device)
 
         if metric == "pearson":
-            # Pearson correlation: center + scale each channel.
+            # Pearson correlation via per-channel standardization.
+            # The crucial piece is the additional division by the number of
+            # spatial elements so the dot product stays on the correlation scale.
             X = X - X.mean(dim=1, keepdim=True)
             X = X / (X.std(dim=1, keepdim=True) + 1e-8)
+            sim = (X @ X.T) / X.size(1)
         else:
-            # Cosine similarity: only L2-normalize each channel.
+            # Cosine similarity: L2-normalize each channel vector.
             X = X / (torch.linalg.vector_norm(X, ord=2, dim=1, keepdim=True) + 1e-8)
-
-        sim = X @ X.T
+            sim = X @ X.T
         sim = torch.clamp(sim, -1, 1)
 
         sims.append(sim.detach().cpu())

@@ -41,7 +41,7 @@ evaluation:
     num_batches: 5
 pruning:
   method: pearson_correlation # options: l1_norm | l2_norm | pearson_correlation | cosine_similarity
-  threshold: 0.8
+  threshold: 0.68
   num_slices: 200
   reinitialize_weights: null
   ckpt_path:
