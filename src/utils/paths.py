@@ -136,7 +136,7 @@ class ExperimentPaths:
         """
         Generate descriptive suffix for folder/model naming.
         Includes:
-        - pruning method (l1 or corr_tXX)
+        - pruning method (l1, l2, rand, corr_tXX, cos_tXX)
         - block ratios
         - weight reinit mode
         """
@@ -156,6 +156,8 @@ class ExperimentPaths:
             threshold = prune_cfg.get("threshold", 0.90)   # default
             t_int = int(threshold * 100)
             method_prefix = f"cos_t{t_int}"
+        elif method in ("random", "random_filters"):
+            method_prefix = "rand"
         elif method == "l2_norm":
             method_prefix = "l2_norm"
         else:

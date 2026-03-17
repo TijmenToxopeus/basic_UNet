@@ -3,6 +3,7 @@ from .l1_norm import L1NormPruning
 from .l2_norm import L2NormPruning
 from .pearson_correlation import PearsonCorrelationPruning
 from .cosine_similarity import CosineSimilarityPruning
+from .random_filters import RandomFilterPruning
 
 
 _METHODS = {
@@ -10,6 +11,8 @@ _METHODS = {
     "l2_norm": L2NormPruning(),
     "pearson_correlation": PearsonCorrelationPruning(),
     "cosine_similarity": CosineSimilarityPruning(),
+    "random_filters": RandomFilterPruning(),
+    "random": RandomFilterPruning(),  # backward-compatible short alias
     "cosine": CosineSimilarityPruning(),  # backward-compatible alias
     "correlation": PearsonCorrelationPruning(),  # backward-compatible alias
 }
