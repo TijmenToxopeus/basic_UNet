@@ -436,6 +436,7 @@ def train_model(cfg=None):
     # ============================================================
     metrics_log = {
         "epoch": [],
+        "epoch_time_seconds": [],
         "train_loss_mean": [],
         "train_loss_std": [],
         "val_dice_mean": [],
@@ -460,6 +461,7 @@ def train_model(cfg=None):
     t0 = time.perf_counter()
 
     for epoch in range(epochs):
+        epoch_t0 = time.perf_counter()
         train_iter = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", ncols=100)
 
         train_res = train_one_epoch(
@@ -485,9 +487,11 @@ def train_model(cfg=None):
         )
 
         curr_lr = optimizer.param_groups[0]["lr"]
+        epoch_time_s = time.perf_counter() - epoch_t0
 
         epoch_metrics = {
             "epoch": epoch + 1,
+            "epoch_time_seconds": epoch_time_s,
             "train_loss_mean": train_res.loss_mean,
             "train_loss_std": train_res.loss_std,
             "val_dice_mean": val_res.dice_mean,
@@ -500,6 +504,7 @@ def train_model(cfg=None):
 
         print(
             f"📈 Epoch {epoch+1:02d}: "
+            f"Time={epoch_metrics['epoch_time_seconds']:.1f}s, "
             f"Loss={epoch_metrics['train_loss_mean']:.4f}±{epoch_metrics['train_loss_std']:.4f}, "
             f"Dice={epoch_metrics['val_dice_mean']:.4f}±{epoch_metrics['val_dice_std']:.4f}, "
             f"IoU={epoch_metrics['val_iou_mean']:.4f}±{epoch_metrics['val_iou_std']:.4f}, "
@@ -527,6 +532,21 @@ def train_model(cfg=None):
 
     t1 = time.perf_counter()
     total_train_time_s = t1 - t0
+    mean_epoch_time_s = (
+        float(np.mean(metrics_log["epoch_time_seconds"]))
+        if metrics_log["epoch_time_seconds"]
+        else float("nan")
+    )
+    peak_train_vram_mb = (
+        float(max(metrics_log["vram_max"]))
+        if metrics_log["vram_max"]
+        else float("nan")
+    )
+    last_epoch_vram_mb = (
+        float(metrics_log["vram_max"][-1])
+        if metrics_log["vram_max"]
+        else float("nan")
+    )
 
     # If for some reason no "best" was saved (e.g., NaNs), fall back to saving the last state
     if not os.path.exists(final_model_path):
@@ -574,6 +594,8 @@ def train_model(cfg=None):
             "total_seconds": float(total_train_time_s),
             "total_minutes": float(total_train_time_s / 60.0),
             "total_hours": float(total_train_time_s / 3600.0),
+            "mean_epoch_seconds": mean_epoch_time_s,
+            "mean_epoch_minutes": float(mean_epoch_time_s / 60.0) if np.isfinite(mean_epoch_time_s) else float("nan"),
         },
         "best": {
             "val_dice": float(best_val_dice),
@@ -583,7 +605,8 @@ def train_model(cfg=None):
             "train_loss": float(metrics_log["train_loss_mean"][-1]) if metrics_log["train_loss_mean"] else float("nan"),
             "val_dice": float(metrics_log["val_dice_mean"][-1]) if metrics_log["val_dice_mean"] else float("nan"),
             "val_iou": float(metrics_log["val_iou_mean"][-1]) if metrics_log["val_iou_mean"] else float("nan"),
-            "vram_epoch_peak_mb": float(metrics_log["vram_max"][-1]) if metrics_log["vram_max"] else float("nan"),
+            "vram_epoch_peak_mb": peak_train_vram_mb,
+            "vram_epoch_last_mb": last_epoch_vram_mb,
         },
         "artifacts": {
             "final_model": final_model_path,  # now actually best-overall

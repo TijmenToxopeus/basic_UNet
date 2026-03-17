@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 import torch
 import wandb
 
@@ -74,6 +75,9 @@ def run_pruning(cfg=None):
     # Ensure masks are saved alongside pruning outputs (same base as summary_path)
     pruning_cfg["save_masks_dir"] = str(paths.pruned_model_dir)
 
+    # Measure the full pruning pipeline needed to produce the pruned model artifact.
+    t_prune_start = time.perf_counter()
+
     # Compute masks (method is responsible for any method-specific data loading)
     prune_out = pruner.compute_masks(
         model=baseline_model,
@@ -130,6 +134,9 @@ def run_pruning(cfg=None):
         #     }
         # )
 
+    t_prune_end = time.perf_counter()
+    pruning_time_s = t_prune_end - t_prune_start
+
     # ----------------------------
     # Param stats
     # ----------------------------
@@ -158,6 +165,11 @@ def run_pruning(cfg=None):
             "default": default_ratio,
         },
         "threshold": threshold,
+        "time": {
+            "total_seconds": float(pruning_time_s),
+            "total_minutes": float(pruning_time_s / 60.0),
+            "total_hours": float(pruning_time_s / 3600.0),
+        },
         "params": {
             "original": pstats.original_params,
             "pruned": pstats.pruned_params,
