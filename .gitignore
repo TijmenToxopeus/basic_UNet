@@ -33,6 +33,7 @@ toy/
 *.ckpt
 
 # --- Pruning generated artifacts inside src/ ---
+src/pipeline/run_full_exp.py
 src/pruning/l1_analysis/
 src/pruning/__pycache__/
 src/pruning/methods/__pycache__/

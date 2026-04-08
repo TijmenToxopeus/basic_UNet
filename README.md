@@ -40,6 +40,7 @@ basic_UNet/
 │   ├── notebooks/                  # Analysis and experiment notebooks
 │   ├── pipeline/                   # End-to-end training/pruning workflows
 │   ├── pruning/                    # Pruning methods, rebuild, reinit, summaries
+│   ├── quantization/               # Preliminary quantization experiments
 │   ├── training/                   # Data loading, training, evaluation, metrics
 │   └── utils/                      # Paths, config loading, reproducibility, logging
 └── results/                        # Local experiment outputs
@@ -125,14 +126,6 @@ This pipeline:
 5. retrains the pruned model
 6. evaluates the retrained pruned model
 
-### 3. Run scripted pruning sweeps
-
-```bash
-python -m src.pipeline.run_full_exp
-```
-
-This file is currently used for custom experiment sweeps by editing the script directly. It contains several commented sweep variants and one active sweep implementation.
-
 ## Pruning Options
 
 The pruning system supports multiple methods under [`src/pruning/methods`](/mnt/hdd/ttoxopeus/basic_UNet/src/pruning/methods):
@@ -196,3 +189,4 @@ These scripts are mainly for:
 ## Notes
 
 - The notebooks are not explicit parts of the main training and pruning pipelines, but they are used for data exploration, post-processing experiment outputs, and generating plots and figures for analysis and reporting.
+- The [`src/quantization`](/mnt/hdd/ttoxopeus/basic_UNet/src/quantization) folder contains preliminary code that is currently only used for a quick experiment, not as a stable part of the main workflow.
