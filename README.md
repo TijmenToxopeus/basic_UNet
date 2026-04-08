@@ -1,392 +1,195 @@
-# 🧩 basic_UNet
-
-A lightweight and modular **2D U-Net framework** for medical image segmentation, with a full pipeline for **training, evaluation, structured pruning, rewinding, model inspection, and experiment automation**. Developed and tested on the **ACDC cardiac MRI dataset**, but compatible with any 2D segmentation dataset.
-
----
-
-# 📌 Table of Contents
-- [✨ Features](#-features)
-- [📁 Project Structure](#-project-structure)
-- [📦 Installation](#-installation)
-- [📚 Dataset](#-dataset)
-- [⚙️ Configuration System](#️-configuration-system)
-- [🚀 Baseline Training](#-baseline-training)
-- [🎯 Evaluation](#-evaluation)
-- [✂️ Structured Pruning Pipeline](#️-structured-pruning-pipeline)
-  - [L1 block-wise pruning](#l1-block-wise-pruning)
-  - [Rewinding options](#rewinding-options)
-  - [Rebuilding a pruned UNet](#rebuilding-a-pruned-unet)
-- [🧪 Model Inspection & L1 Analysis](#-model-inspection--l1-analysis)
-- [📊 Experiment Logging](#-experiment-logging)
-- [🧵 Full Experiment Runner](#-full-experiment-runner)
-- [📈 Example Results](#-example-results)
-- [🛣️ Roadmap](#️-roadmap)
-- [🧠 Author](#-author)
-
----
-
-# ✨ Features
-
-### 🧠 UNet Architecture
-- Clean, modular UNet defined in `src/models/unet.py`
-- Easily modifiable architecture (depth, channels, features)
-
-### 🚀 Training & Evaluation
-- Full baseline training pipeline (`src/pipeline/baseline.py`)
-- Dice, IoU, and loss logging
-- Learning rate scheduling
-- Automatic checkpointing
-- Evaluation pipeline (`src/training/eval.py`)
-
-### ✂️ Structured L1 Pruning (Block-wise)
-- L1 filter norm computation
-- Block-wise pruning ratios (e.g., `decoders.1: 0.3`)
-- Pruning masks stored as JSON
-- Rebuild a smaller pruned UNet automatically
-
-### 🔄 Weight Reinitialization Modes
-- `none` → keep weights post-pruning
-- `random` → reinitialize pruned model from scratch
-- `rewind` → restore weights from early checkpoint
-
-### 📉 Model Inspection
-- L1 histograms
-- Layer statistics
-- Channel shapes
-- Visualization tools
-
-### ⚙️ Dynamic Configuration System
-- YAML config with structured training + pruning configuration
-- Runtime overrides (epochs, LR, pruning mode, ratios)
-- Automatic path generation via `utils/paths.py`
-
-### 🧪 Experiment Automation
-- `run_full_exp.py` runs a full sweep: `baseline → prune → retrain/evaluate → repeat for each mode`
-
-### 📈 Logging
-- Local logging (JSON, PNG, checkpoints)
-- W&B integration available
-
----
-
-# 📁 Project Structure
-
-    src/
-        models/
-            unet.py                # U-Net architecture
-
-        pipeline/
-            baseline.py            # Baseline training pipeline
-            pruned.py              # Pruning + retraining pipeline
-            run_full_exp.py        # Automates full experiment runs
-
-        pruning/
-            l1_pruning.py          # Pruning pipeline (combines all pruning scripts)
-            model_inspect.py       # L1 norm & mask functions + inspect shapes, features, distributions
-            rebuild.py             # Rebuild pruned UNet functions
-            l1_analysis/           # Histograms of l1 norm distributions between layers
-
-        training/
-            data_loader.py         # ACDC dataset handling (preprocessing + Dataset + Dataloader)
-            train.py               # Training pipeline
-            eval.py                # Evaluation pipeline
-            metrics.py             # Dice, IoU, flops, inference time
-            loss.py                # Loss functions and combinations
-
-        utils/
-            config.py              # YAML loader + overrides
-            paths.py               # Experiment folder management
-            wandb_utils.py         # W&B logging
-
-        config.yaml                # Main configuration file
-
----
-
-# 📦 Installation
-
-    git clone https://github.com/TijmenToxopeus/basic_UNet.git
-    cd basic_UNet
-    pip install -r requirements.txt
-
-Requires:
-- Python ≥ 3.10  
-- PyTorch ≥ 2.0  
-
----
+# basic_UNet
 
-# 📚 Dataset
+A modular 2D U-Net repository for medical image segmentation, with support for baseline training, structured pruning, retraining, evaluation, and experiment analysis.
 
-This framework uses **2D slices extracted from 3D NIfTI volumes (`.nii.gz`)**, such as those provided by the **ACDC cardiac MRI dataset**.  
-Each patient folder contains end-diastolic (ED) and end-systolic (ES) frames together with corresponding ground-truth masks.
+The current project is set up around cardiac MRI segmentation experiments, mainly using ACDC-style data and pruning studies on trained U-Net models.
 
----
+## What This Repo Does
 
-## 📂 Example Patient Folder (ACDC)
-    patient001/
-        patient001_4d.nii.gz # Full 4D cine MRI: (H, W, slices, time)
-        patient001_frame01.nii.gz # ED frame (raw image)
-        patient001_frame01_gt.nii.gz # ED segmentation mask
-        patient001_frame12.nii.gz # ES frame (raw image)
-        patient001_frame12_gt.nii.gz # ES segmentation mask
-        MANDATORY_CITATION # Required citation file
-        Info # Metadata
-  
----
+- Train a baseline 2D U-Net for multi-class segmentation
+- Evaluate baseline, pruned, and retrained-pruned models
+- Prune channels block-wise with multiple pruning methods
+- Rebuild smaller pruned U-Nets from pruning masks
+- Compare pruning settings such as layer choice, ratio, threshold, and reinitialization mode
+- Analyze experiment outputs with notebooks and plotting scripts
 
-## 📘 Meaning of Each File
+## Repository Layout
 
-| File | Description |
-|------|-------------|
-| `patient001_4d.nii.gz` | Complete 4D cine stack (not always used directly) |
-| `patient001_frame01.nii.gz` | End-diastolic (ED) volume |
-| `patient001_frame01_gt.nii.gz` | ED ground-truth mask |
-| `patient001_frame12.nii.gz` | End-systolic (ES) volume |
-| `patient001_frame12_gt.nii.gz` | ES ground-truth mask |
+```text
+basic_UNet/
+├── README.md
+├── requirements.txt
+├── src/
+│   ├── config.yaml                 # Main experiment config
+│   ├── analysis/                   # Plotting utilities for pruning experiments
+│   ├── models/                     # U-Net definition
+│   ├── notebooks/                  # Analysis and experiment notebooks
+│   ├── pipeline/                   # End-to-end training/pruning workflows
+│   ├── pruning/                    # Pruning methods, rebuild, reinit, summaries
+│   ├── training/                   # Data loading, training, evaluation, metrics
+│   └── utils/                      # Paths, config loading, reproducibility, logging
+├── results/                        # Local experiment outputs
+└── toy/                            # Small toy experiments (ignored in Git)
+```
 
-The masks contain **integer class labels** (not RGB colors):
-- 0 → background  
-- 1 → RV  
-- 2 → myocardium  
-- 3 → LV  
+## Setup
 
----
-## 🖼️ Example (ED and ES Slices)
+Create an environment and install dependencies:
 
-### End-Diastolic (ED)
-<table>
-<tr>
-<td><strong>Image</strong></td>
-<td><strong>Overlay</strong></td>
-</tr>
-<tr>
-<td><img src="examples/patient001_frame01.png" width="300"/></td>
-<td><img src="examples/patient001_frame01_ol.png" width="300"/></td>
-</tr>
-</table>
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-### End-Systolic (ES)
-<table>
-<tr>
-<td><strong>Image</strong></td>
-<td><strong>Overlay</strong></td>
-</tr>
-<tr>
-<td><img src="examples/patient001_frame12.png" width="300"/></td>
-<td><img src="examples/patient001_frame12_ol.png" width="300"/></td>
-</tr>
-</table>
+The requirements file now includes the packages used by the current training, pruning, evaluation, and analysis code.
 
+## Configuration
 
-## 🔧 Preprocessing Into 2D Slices
+The main config lives at:
 
-The training pipeline expects **2D images and masks**, typically exported into:
-    data/
-        images/
-        masks/
+[`src/config.yaml`](/mnt/hdd/ttoxopeus/basic_UNet/src/config.yaml)
 
-# ⚙️ Configuration System
+It defines:
 
-All experiment settings are defined in:
+- experiment name, model name, seed, device
+- training hyperparameters
+- training and evaluation dataset paths
+- pruning method, ratios, threshold, and reinitialization mode
 
-    config.yaml
+Important implementation detail: the config loader currently uses a hard-coded absolute path in [`src/utils/config.py`](/mnt/hdd/ttoxopeus/basic_UNet/src/utils/config.py). If you move this repo to another machine or directory, update that file or make the config path configurable.
 
-Example:
+## Data Format
 
-    model:
-      in_channels: 1
-      out_channels: 4
+Training and evaluation expect image and label folders containing matching `.nii.gz` files. The configured paths point to separate image and label directories, for example:
 
-    training:
-      batch_size: 8
-      learning_rate: 1e-3
-      num_epochs: 40
+```text
+imagesTr/
+├── patient001_frame01.nii.gz
+├── patient001_frame12.nii.gz
+└── ...
 
-    pruning:
-      block_ratios:
-        encoders.1: 0.1
-        decoders.3: 0.3
-      reinitialize_weights: rewind
+labelsTr/
+├── patient001_frame01.nii.gz
+├── patient001_frame12.nii.gz
+└── ...
+```
 
-Pipelines may override LR, epochs, pruning ratio, or rewinding mode during sweeps.
+The dataset loader:
 
----
+- loads 3D NIfTI volumes
+- extracts 2D slices
+- resizes slices to a fixed input size
+- applies patient-level train/validation splitting
+- supports augmentation with Albumentations and TorchIO during training
 
-# 🚀 Baseline Training
+## Typical Workflows
 
-Train the full UNet:
+### 1. Train and evaluate a baseline model
 
-    python -m src.pipeline.baseline
+```bash
+python -m src.pipeline.baseline
+```
 
-Outputs include:
-- model checkpoints  
-- `metrics.json`  
-- `training_curves.png`  
-- prediction samples  
+This runs:
 
----
+1. baseline training
+2. baseline evaluation
+3. config snapshot export into the experiment folder
 
-# 🎯 Evaluation
+### 2. Run pruning, evaluate, retrain, and evaluate again
 
-Evaluate a trained model:
+```bash
+python -m src.pipeline.pruned
+```
 
-    python -m src.training.eval
+This pipeline:
 
-Metrics include:
-- Dice score  
-- IoU  
-- Pixel accuracy  
-- Precision/recall  
+1. loads the trained baseline checkpoint
+2. computes pruning masks
+3. rebuilds a smaller pruned U-Net
+4. evaluates the pruned model
+5. retrains the pruned model
+6. evaluates the retrained pruned model
 
----
+### 3. Run scripted pruning sweeps
 
-# ✂️ Structured Pruning Pipeline
+```bash
+python -m src.pipeline.run_full_exp
+```
 
-Prune the UNet and evaluate:
+This file is currently used for custom experiment sweeps by editing the script directly. It contains several commented sweep variants and one active sweep implementation.
 
-    python -m src.pipeline.pruned --mode rewind
+## Pruning Options
 
-Modes:
-- `none`  
-- `random`  
-- `rewind`  
+The pruning system supports multiple methods under [`src/pruning/methods`](/mnt/hdd/ttoxopeus/basic_UNet/src/pruning/methods):
 
----
+- `l1_norm`
+- `l2_norm`
+- `pearson_correlation`
+- `cosine_similarity`
+- `random_filters`
 
-## L1 Block-wise Pruning
+The config can specify:
 
-Block ratios define how many filters to prune in each block.
+- a global default pruning ratio
+- per-block pruning ratios
+- an optional threshold for similarity-based methods
+- weight handling after pruning:
+  - `null`: keep inherited weights
+  - `random`: random reinitialization
+  - `rewind`: restore early checkpoint weights
 
-Example:
+## Results Layout
 
-    block_ratios:
-      encoders.0: 0.0
-      encoders.1: 0.1
-      decoders.3: 0.4
-      decoders.5: 0.2
+Outputs are written under `results/<model_name>/<experiment_name>/`.
 
-Process:
-1. Compute L1 norm  
-2. Rank filters  
-3. Drop lowest-norm filters  
-4. Save pruning mask  
-5. Apply pruning to UNet  
+A typical experiment tree looks like:
 
----
+```text
+results/UNet_ACDC/<experiment_name>/
+├── baseline/
+│   ├── training/
+│   └── evaluation/
+├── pruned/
+│   └── <method_and_ratio_suffix>/
+│       ├── pruned_model/
+│       ├── pruned_evaluation/
+│       ├── retraining_pruned/
+│       └── retrained_pruned_evaluation/
+└── logs/
+```
 
-## Rewinding Options
+Saved artifacts include:
 
-| Mode   | Description                            |
-|--------|----------------------------------------|
-| none   | Keep pruned weights                    |
-| random | Reinitialize the pruned model          |
-| rewind | Restore weights from an earlier checkpoint |
+- model checkpoints
+- evaluation metrics
+- training curves
+- pruning metadata
+- run summaries
+- prediction visualizations
 
-Example:
+## Analysis
 
-    python -m src.pipeline.pruned --reinitialize_weights rewind
+Analysis utilities live in [`src/analysis`](/mnt/hdd/ttoxopeus/basic_UNet/src/analysis) and experiment notebooks live in [`src/notebooks`](/mnt/hdd/ttoxopeus/basic_UNet/src/notebooks).
 
----
+These scripts are mainly for:
 
-## Rebuilding a Pruned UNet
+- plotting pruning sensitivity by layer
+- plotting uniform pruning curves
+- visualizing feature maps
+- generating experiment figures for reports
 
-    python -m src.pruning.rebuild
+## Notes
 
-This script:
-- Reads pruning masks  
-- Computes new channel sizes  
-- Builds a reduced UNet  
-- Loads surviving weights  
+- `wandb/`, `toy/`, caches, and generated artifacts are now ignored locally and should not be committed.
+- The notebooks are kept in the repo because they appear to be part of the analysis workflow, not just disposable scratch files.
+- Some scripts still reflect active experimentation and may need small cleanup passes before being used as polished public entry points.
 
----
+## Next Cleanup Ideas
 
-# 🧪 Model Inspection & L1 Analysis
+If you want this repo to be easier for others to run, the highest-value follow-ups would be:
 
-Inspect L1 statistics:
-
-    python -m src.pruning.model_inspect
-
-Generates:
-- Histograms  
-- Layer statistics  
-- CSV summaries  
-
-Located in:
-
-    results/analysis/
-
-Notebooks:
-- `l1_distributions.ipynb`  
-- `pruning_notebook.ipynb`  
-
----
-
-# 📊 Experiment Logging
-
-### Local Logging (default)
-
-    results/<experiment>/<timestamp>/
-
-Includes:
-- `metrics.json`  
-- training curves  
-- sample predictions  
-- model `.pt` files  
-
-### Weights & Biases (optional)
-
-Enable via:
-
-    logging:
-      use_wandb: true
-      project: "basic_unet_pruning"
-
----
-
-# 🧵 Full Experiment Runner
-
-Run the entire pipeline:
-
-    python -m src.pipeline.run_full_exp
-
-This performs:
-
-    1. Train baseline
-    2. Prune (mode=none)
-    3. Prune (mode=random)
-    4. Prune (mode=rewind)
-    5. Evaluate all
-
-Each experiment overrides LR, epochs, and pruning settings automatically.
-
----
-
-# 📈 Example Results
-
-| Model         | Params | FLOPs     | Dice | Notes            |
-|---------------|--------|----------:|------|------------------|
-| Baseline UNet | 1.9M   | 55 GFLOPs | 0.88 | —                |
-| Pruned 30%    | 1.4M   | 38 GFLOPs | 0.87 | Smaller model    |
-| Pruned 50%    | 1.0M   | 28 GFLOPs | 0.85 | More aggressive  |
-
-Training/validation curves saved as:
-
-    training_curves.png
-
----
-
-# 🛣️ Roadmap
-
-- [ ] Learning rate finder  
-- [ ] FLOPs/latency benchmarking  
-- [ ] Add Attention UNet / UNet++  
-- [ ] 3D support  
-- [ ] Combined pruning + quantization  
-- [ ] Export models to ONNX/TensorRT  
-
----
-
-# 🧠 Author
-
-**Tijmen Toxopeus**  
-Master’s student in Applied Physics (TU Delft)  
-Focus: medical image segmentation, structured pruning, efficient deep learning.
+1. remove the hard-coded config path
+2. separate stable pipeline entry points from one-off experiment scripts
+3. add one small example config for a public dataset layout
