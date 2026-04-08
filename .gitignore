@@ -26,6 +26,8 @@ manim_visuals/
 media/
 results/
 checkpoints/
+wandb/
+toy/
 *.pth
 *.pt
 *.ckpt
@@ -48,6 +50,7 @@ data/
 *.yaml~
 *.json~
 *.bak
+*.backup
 
 # --- IDE / editor specific ---
 .vscode/
