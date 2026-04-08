@@ -4,6 +4,20 @@ A modular 2D U-Net repository for medical image segmentation, with support for b
 
 The current project is set up around cardiac MRI segmentation experiments, mainly using ACDC-style data and pruning studies on trained U-Net models.
 
+## Project Background
+
+This repository accompanies a thesis on structured channel pruning for cardiac MRI segmentation with a 2D U-Net. The project focuses on the trade-off between segmentation quality, computational efficiency, and robustness under domain shift.
+
+### Abstract
+
+Cardiac MRI segmentation models have improved substantially in recent years, but these gains have often come at the cost of increasing model size and computational complexity, which can limit their practical deployment. This thesis investigates structured channel pruning for cardiac MRI segmentation with a 2D U-Net, with a particular focus on segmentation performance, computational efficiency, and generalization under domain shift.
+
+A systematic evaluation is conducted for two structured pruning criteria: importance-based pruning using the l1-norm and redundancy-based pruning using Pearson correlation. The pruned models are evaluated on the in-domain ACDC dataset and the out-of-domain M\&M dataset, with an additional ablation study on the STONE dataset. The analysis considers the effect of retraining, pruning ratio, pruning location, and pruning criterion, and compares both segmentation accuracy and practical efficiency measures such as parameter count, FLOPs, inference time, and GPU memory usage.
+
+The results show that post-pruning retraining in the form of fine-tuning is essential to recover performance that was lost by pruning. On the ACDC dataset, l1-norm pruning achieves the best trade-off, reaching up to 96% model compression with only a 0.93% Dice loss. The analysis further reveals that most redundancy is located in the deepest layers of the network, particularly the bottleneck. These in-domain findings also extend to the out-of-domain setting. Prior studies and common assumptions suggest that structured pruning degrades out-of-domain performance. In contrast, this work shows that it not only preserves segmentation performance but can even substantially improve robustness under domain shift. On the M\&M dataset, pruned models outperform the baseline by up to 5% Dice, while maintaining similar performance limits as in-domain. This behavior is further supported by the additional ablation study on the STONE dataset, which shows consistent pruning trends under a different type of domain shift.
+
+Overall, this thesis shows that structured pruning is an effective compression strategy for cardiac MRI segmentation. When combined with retraining, it enables substantially smaller and more efficient models while largely preserving predictive performance and, in some cases, improving robustness under domain shift.
+
 ## What This Repo Does
 
 - Train a baseline 2D U-Net for multi-class segmentation
@@ -28,8 +42,7 @@ basic_UNet/
 │   ├── pruning/                    # Pruning methods, rebuild, reinit, summaries
 │   ├── training/                   # Data loading, training, evaluation, metrics
 │   └── utils/                      # Paths, config loading, reproducibility, logging
-├── results/                        # Local experiment outputs
-└── toy/                            # Small toy experiments (ignored in Git)
+└── results/                        # Local experiment outputs
 ```
 
 ## Setup
@@ -182,14 +195,4 @@ These scripts are mainly for:
 
 ## Notes
 
-- `wandb/`, `toy/`, caches, and generated artifacts are now ignored locally and should not be committed.
-- The notebooks are kept in the repo because they appear to be part of the analysis workflow, not just disposable scratch files.
-- Some scripts still reflect active experimentation and may need small cleanup passes before being used as polished public entry points.
-
-## Next Cleanup Ideas
-
-If you want this repo to be easier for others to run, the highest-value follow-ups would be:
-
-1. remove the hard-coded config path
-2. separate stable pipeline entry points from one-off experiment scripts
-3. add one small example config for a public dataset layout
+- The notebooks are not explicit parts of the main training and pruning pipelines, but they are used for data exploration, post-processing experiment outputs, and generating plots and figures for analysis and reporting.
