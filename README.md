@@ -33,15 +33,15 @@ Ground truth is shown with semi-transparent fills and solid contours, prediction
 
 ### ACDC
 
-![ACDC qualitative GIF](docs/readme_assets/acdc_qualitative.gif)
+![ACDC qualitative GIF](docs/readme_assets/acdc_qualitative_v2.gif)
 
 ### M&M
 
-![M&M qualitative GIF](docs/readme_assets/mm_qualitative.gif)
+![M&M qualitative GIF](docs/readme_assets/mm_qualitative_v2.gif)
 
 ### STONE
 
-![STONE qualitative GIF](docs/readme_assets/stone_qualitative.gif)
+![STONE qualitative GIF](docs/readme_assets/stone_qualitative_v2.gif)
 
 ## What This Repo Does
 
