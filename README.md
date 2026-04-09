@@ -43,6 +43,13 @@ Ground truth is shown with semi-transparent fills and solid contours, prediction
 
 ![STONE qualitative GIF](docs/readme_assets/stone_qualitative_v2.gif)
 
+### U-Net Architecture
+
+The figure below shows the 2D U-Net architecture used throughout the experiments, including encoder, bottleneck, decoder, skip connections, and representative feature maps.
+
+![U-Net schematic](docs/readme_assets/architecture.png)
+
+
 ## What This Repo Does
 
 - Train a baseline 2D U-Net for multi-class segmentation
